@@ -930,9 +930,16 @@ function api(action, data){
       .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
   }
 
-  // 일반 액션
-  var params=new URLSearchParams({action:action,data:JSON.stringify(data||{})});
-  return fetch(GAS_URL+'?'+params.toString(),{method:'GET'})
+  // 일반 액션 (저장/삭제 등 쓰기 액션)
+  // GET 방식은 URL 길이 제한(약 2000자)에 걸려 실적 저장처럼 데이터가 큰 요청이
+  // "Failed to fetch"로 실패할 수 있어 POST로 전송한다.
+  // Content-Type을 text/plain으로 지정해야 브라우저가 preflight(OPTIONS) 요청을
+  // 보내지 않는다 (GAS 웹앱은 OPTIONS를 처리하지 않아 preflight 시 실패함).
+  return fetch(GAS_URL,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(Object.assign({action:action},data||{}))
+  })
     .then(function(r){return r.json();})
     .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
 }
@@ -2092,8 +2099,9 @@ function loadDash(dateStr){
   var dtBtn=document.getElementById('dash-target-edit-btn');
   if(dtBtn) dtBtn.style.display=(CU&&CU.role==='admin')?'inline-flex':'none';
 
-  // 전날 날짜
+  // 전날 날짜 (주말은 건너뛰고 직전 영업일 기준: 월요일은 금요일과 비교)
   var prevDt = new Date(dateStr); prevDt.setDate(prevDt.getDate()-1);
+  while(prevDt.getDay()===0 || prevDt.getDay()===6){ prevDt.setDate(prevDt.getDate()-1); }
   var prevStr = prevDt.toISOString().slice(0,10);
 
   Promise.all([
