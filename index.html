@@ -388,7 +388,7 @@ table.pt td.otc{background:#FFF8F8;}
           <div class="chd" style="margin-bottom:4px">
             <div>
               <div class="cttl">월 누적 목표달성률</div>
-              <div class="csub" id="dash-month-score-sub">환산점수 기준 · 일별목표 × 영업일(연차제외)</div>
+              <div class="csub" id="dash-month-score-sub">환산점수 기준 · 일별 목표 합산(연차 반영)</div>
             </div>
           </div>
           <div id="dash-month-score-rate" style="margin-top:12px"></div>
@@ -852,7 +852,79 @@ function cacheInvalidate(action){
 
 // ── 전역 설정값 (관리자가 수정 → '설정' 시트에 저장 → 전체 사용자에 반영) ──
 var EMP_TARGETS={};       // 직원별 일일 달성 목표 override {empId:{achieve,wireless}}  ※개인 직원별 "목표실적"과는 다름
-var EMP_SCORE_TARGETS={}; // 개인 직원별 목표실적 (환산점수 기준) {empId: 점수}
+// 개인 직원별 목표실적(환산점수) — 이력 관리 방식: {empId:[{date:'YYYY-MM-DD', value:pt}, ...]} (date 오름차순)
+// "date부터 그 값이 적용됨"을 의미. value가 null이면 그 날짜부터 목표 미지정.
+// 월 목표는 매일 그 날짜에 유효했던 값을 그대로 합산해서 계산한다 (일별목표×영업일 아님 — 목표는 언제든 바뀔 수 있으므로).
+var EMP_SCORE_TARGETS={};
+
+// 예전 방식(단일 숫자)으로 저장돼있던 데이터를 이력 배열로 변환 + 정렬 보정
+function normalizeScoreTargets(raw){
+  var out={};
+  Object.keys(raw||{}).forEach(function(eid){
+    var v=raw[eid];
+    if(Array.isArray(v)){
+      out[eid]=v.slice().sort(function(a,b){return a.date<b.date?-1:(a.date>b.date?1:0);});
+    } else if(v!=null && v!==''){
+      out[eid]=[{date:'2000-01-01',value:Number(v)}];
+    }
+  });
+  return out;
+}
+// 특정 날짜에 적용되는 목표값 조회 (그 날짜 이전(포함) 설정된 값 중 가장 최근 것). 없으면 null.
+function getTargetOnDate(empId, dateStr){
+  var hist=EMP_SCORE_TARGETS[empId];
+  if(!hist||!hist.length) return null;
+  var val=null;
+  for(var i=0;i<hist.length;i++){
+    if(hist[i].date<=dateStr) val=hist[i].value; else break;
+  }
+  return val;
+}
+// 오늘 기준 "현재" 목표값 (설정 화면에 표시할 값)
+function getCurrentTarget(empId){
+  return getTargetOnDate(empId, new Date().toISOString().slice(0,10));
+}
+// 목표값 변경 이력 추가 (dateStr부터 적용). 같은 날짜에 이미 기록이 있으면 최신 입력으로 대체.
+function pushTargetChange(hist, dateStr, value){
+  hist=(hist||[]).filter(function(h){return h.date!==dateStr;});
+  hist.push({date:dateStr, value:value});
+  hist.sort(function(a,b){return a.date<b.date?-1:(a.date>b.date?1:0);});
+  return hist;
+}
+// 연차 유형별 하루 차감 비율 (종일=1, 반차=0.5, 반반차=0.25)
+function leaveFraction(annType){
+  if(!annType) return 0;
+  if(annType.indexOf('반반차')!==-1) return 0.25;
+  if(annType.indexOf('반차')!==-1) return 0.5;
+  return 1;
+}
+// 해당 월의 직원별 연차 비율 맵: {empId:{date:fraction}}
+function buildAnnualFractionMaps(anns, ym, endDate){
+  var maps={};
+  (anns||[]).filter(function(a){return a.date.indexOf(ym)===0 && a.date<=endDate && !isOffDay(a.date);})
+    .forEach(function(a){
+      if(!maps[a.empId]) maps[a.empId]={};
+      var f=leaveFraction(a.type);
+      maps[a.empId][a.date]=Math.max(maps[a.empId][a.date]||0,f);
+    });
+  return maps;
+}
+// 월 목표 합계: 영업일(주말/공휴일 제외)마다 그날 유효했던 목표값을, 그날의 연차 비율만큼 차감해 합산
+function calcMonthTargetSum(empId, ym, endDate, annFracMap){
+  var year=parseInt(ym.slice(0,4)), month=parseInt(ym.slice(5,7));
+  var last=new Date(year,month,0).getDate();
+  var cutDay=endDate?parseInt(endDate.slice(8,10)):last;
+  var sum=0;
+  for(var d=1; d<=Math.min(cutDay,last); d++){
+    var ds=ym+'-'+String(d).padStart(2,'0');
+    if(isOffDay(ds)) continue;
+    var v=getTargetOnDate(empId,ds);
+    if(v==null) continue;
+    var frac=(annFracMap&&annFracMap[ds])||0;
+    sum+=v*(1-frac);
+  }
+  return sum;
+}
 function getEmpDailyTarget(empId){
   var t=EMP_TARGETS[empId];
   return {
@@ -869,7 +941,7 @@ function loadGlobalSettings(cb){
       if(s.WIRELESS_TARGET_DAY!=null && !isNaN(Number(s.WIRELESS_TARGET_DAY))) WIRELESS_TARGET_DAY=Number(s.WIRELESS_TARGET_DAY);
       if(s.ANNUAL_EMP_EDIT!=null) ANNUAL_EMP_EDIT=(s.ANNUAL_EMP_EDIT===true||s.ANNUAL_EMP_EDIT==='true');
       EMP_TARGETS=s.EMP_TARGETS||{};
-      EMP_SCORE_TARGETS=s.EMP_SCORE_TARGETS||{};
+      EMP_SCORE_TARGETS=normalizeScoreTargets(s.EMP_SCORE_TARGETS||{});
       if(s.SCORE_WEIGHTS) Object.keys(s.SCORE_WEIGHTS).forEach(function(k){W[k]=Number(s.SCORE_WEIGHTS[k]);});
       if(s.SCORE_BASE!=null && !isNaN(Number(s.SCORE_BASE))) SCORE_BASE=Number(s.SCORE_BASE);
       if(s.SCORE_MAX!=null && !isNaN(Number(s.SCORE_MAX))) SCORE_MAX=Number(s.SCORE_MAX);
@@ -1171,6 +1243,8 @@ function switchTab(id){
   if(curActive&&curActive.id==='input'&&id!=='input'&&isPerfDirty()){
     if(!confirm('입력 중인 실적이 있습니다.\n저장하지 않고 이동하시겠습니까?')) return;
   }
+  // 탭 이동 시 "전체실적 복귀" 예약은 초기화 (adminEditPerf에서 이 호출 직후 다시 true로 설정함)
+  _returnToAllPerf=false;
   sessionStorage.setItem('lastTab', id);
   _tabs.forEach(function(t){
     var tb=document.getElementById('tb-'+t.id);
@@ -1422,6 +1496,7 @@ function checkOT(){
 
 var _curPerfId=null;
 var _ipTargetEmp=null; // 관리자가 실적입력 대상으로 선택한 직원 {id,name}. null이면 본인.
+var _returnToAllPerf=false; // true면 전체실적에서 수정하러 온 것 — 저장 성공 시 전체실적 탭으로 복귀
 function getInputTarget(){
   if(CU.role==='admin'&&_ipTargetEmp&&_ipTargetEmp.id) return _ipTargetEmp;
   return {id:CU.id,name:CU.name};
@@ -1514,6 +1589,14 @@ function calcTW(rows){
   },0);
 }
 
+// 실제 근무한 시간대 수 (정규업무 값이 하나라도 있거나 기타업무가 체크된 슬롯) — 시간당 환산점수 계산용
+function calcActiveHours(rows){
+  return rows.reduce(function(cnt,r){
+    var worked=FIELDS.some(function(f){return (r[f.k]||0)>0;})||!!r['기타업무'];
+    return cnt+(worked?1:0);
+  },0);
+}
+
 function calcAttend(idxs){
   var norm=idxs.filter(function(i){return i<OT_IDX;});
   var ot=idxs.filter(function(i){return i>=OT_IDX;});
@@ -1597,6 +1680,10 @@ function submitPerf(){
         document.getElementById('ebdg').style.display='inline-block';
         document.getElementById('del-btn').style.display='inline-flex';
         document.getElementById('psub').textContent='⚠️ 이미 입력된 실적이 있습니다. 수정 후 저장하면 덮어씁니다.';
+        if(_returnToAllPerf){
+          _returnToAllPerf=false;
+          setTimeout(function(){switchTab('allperf');},800);
+        }
       } else showAl('i-al',res.error||'저장 실패','er');
     });
   });
@@ -1931,7 +2018,7 @@ function loadMyInfo(){
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">📋 기본 정보 (관리자 등록)<\/div>'+
       ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+
-      ir('목표실적(일별 환산점수)',EMP_SCORE_TARGETS[u.id]!=null?EMP_SCORE_TARGETS[u.id]+'pt':'미지정')+'<\/div>'+
+      ir('목표실적(일별 환산점수)',getCurrentTarget(u.id)!=null?getCurrentTarget(u.id)+'pt':'미지정')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 메인 코스<\/div>'+
       ir('코스 아이디',u.cid1||'-')+irpw('코스 비밀번호',u.cpw1,'cpw1')+irpw('IDMS 비밀번호',u.idms1,'idms1')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 서브 코스<\/div>'+
@@ -2266,12 +2353,8 @@ function loadDash(dateStr){
     var monthScoreEl=document.getElementById('dash-month-score-rate');
     dailyScoreEl.innerHTML=''; monthScoreEl.innerHTML='';
 
-    // 당월 연차일수 per 직원 (종일연차=1, 오전/오후반차=0.5, 반반차=0.25)
-    var annualDays={};
-    anns.filter(function(a){return a.date.indexOf(ym)===0&&a.date<=dateStr&&!isOffDay(a.date);}).forEach(function(a){
-      var v=a.type==='연차'?1:a.type.indexOf('반반차')!==-1?0.25:a.type.indexOf('반차')!==-1?0.5:1;
-      annualDays[a.empId]=(annualDays[a.empId]||0)+v;
-    });
+    // 당월 연차 비율 맵 per 직원 (종일=1, 반차=0.5, 반반차=0.25) — 일별 목표 합산 시 그 날짜분 차감용
+    var annFracMaps = buildAnnualFractionMaps(anns, ym, dateStr);
 
     // 일일 환산점수 per 직원
     var dayScore={}, dayFallback={};
@@ -2301,10 +2384,15 @@ function loadDash(dateStr){
       });
       sorted.forEach(function(eid){
         var pt=scoreMap[eid]||0;
-        var tgt=EMP_SCORE_TARGETS[eid];
-        if(!tgt) return; // 목표 미설정 직원은 스킵
-        var adjBiz=isDaily?1:(bizDays-(annualDays[eid]||0));
-        var mTgt=tgt*Math.max(adjBiz,0);
+        if(!EMP_SCORE_TARGETS[eid]||!EMP_SCORE_TARGETS[eid].length) return; // 목표 미설정 직원은 스킵
+        var mTgt;
+        if(isDaily){
+          var dTgt=getTargetOnDate(eid,dateStr);
+          if(dTgt==null) return;
+          mTgt=dTgt;
+        } else {
+          mTgt=calcMonthTargetSum(eid, ym, dateStr, annFracMaps[eid]);
+        }
         var pct=mTgt>0?Math.min(Math.round(pt/mTgt*100),999):0;
         var col=pct>=100?'var(--ok)':pct>=70?'var(--wn)':'var(--dg)';
         var nm=dispName(eid,fallbackMap[eid]);
@@ -2320,7 +2408,7 @@ function loadDash(dateStr){
         el.appendChild(row);
       });
       // 목표 미설정 직원 안내
-      var noTarget=eids.filter(function(eid){return !EMP_SCORE_TARGETS[eid];});
+      var noTarget=eids.filter(function(eid){return !EMP_SCORE_TARGETS[eid]||!EMP_SCORE_TARGETS[eid].length;});
       if(noTarget.length){
         var names=noTarget.map(function(eid){return dispName(eid,fallbackMap[eid]);}).join(', ');
         var note=document.createElement('div');
@@ -2330,7 +2418,7 @@ function loadDash(dateStr){
       }
     }
     document.getElementById('dash-month-score-sub').textContent=
-      ym+' · 영업일 '+bizDays+'일 · 연차 제외 개인별 산정';
+      ym+' · 일별 목표 합산 · 연차 반영 개인별 산정';
     renderScoreRate(dailyScoreEl, dayScore, dayFallback, true);
     renderScoreRate(monthScoreEl, monthScore, monthFallback, false);
 
@@ -2392,13 +2480,13 @@ function openEmpScoreTargets(){
       function(u){return u.name;},function(u){return u.rank;}
     );
     var body=document.getElementById('emptargets-body');
-    body.innerHTML='<div style="font-size:12px;color:var(--ts);margin-bottom:12px">직원별 일별 환산점수 목표를 입력하세요. 월 목표 = 일별목표 × 영업일(연차제외) 자동계산됩니다.</div>';
+    body.innerHTML='<div style="font-size:12px;color:var(--ts);margin-bottom:12px">직원별 일별 환산점수 목표를 입력하세요. 저장하면 <b>오늘 날짜부터</b> 새 값이 적용되고, 그 이전 날짜에는 그 당시 설정돼있던 값이 그대로 유지됩니다. 월 목표는 매일의 목표값을 그대로 합산해서 계산합니다 (연차 사용일은 비율만큼 차감).</div>';
     emps.forEach(function(e){
-      var cur=EMP_SCORE_TARGETS[e.id]||'';
+      var cur=getCurrentTarget(e.id);
       var row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)';
       row.innerHTML='<div style="flex:1;font-size:13px;font-weight:600">'+e.name+'<span style="color:var(--tm);font-weight:400;font-size:12px"> ('+(e.rank||'-')+')<\/span><\/div>'+
-        '<input type="number" min="0" step="0.1" placeholder="일별 목표(pt)" data-id="'+e.id+'" style="width:140px;padding:6px 8px;border:1.5px solid var(--b);border-radius:7px;font-size:12px" value="'+cur+'">';
+        '<input type="number" min="0" step="0.1" placeholder="일별 목표(pt)" data-id="'+e.id+'" style="width:140px;padding:6px 8px;border:1.5px solid var(--b);border-radius:7px;font-size:12px" value="'+(cur!=null?cur:'')+'">';
       body.appendChild(row);
     });
     document.getElementById('emptargets-save').onclick=saveEmpScoreTargets;
@@ -2406,17 +2494,21 @@ function openEmpScoreTargets(){
   });
 }
 function saveEmpScoreTargets(){
+  var today=new Date().toISOString().slice(0,10);
   var inputs=[].slice.call(document.querySelectorAll('#emptargets-body input[data-id]'));
-  var map=Object.assign({},EMP_SCORE_TARGETS);
+  var newMap={};
+  Object.keys(EMP_SCORE_TARGETS).forEach(function(k){newMap[k]=EMP_SCORE_TARGETS[k].slice();});
   inputs.forEach(function(inp){
     var id=inp.dataset.id, v=inp.value.trim();
-    if(v&&!isNaN(Number(v))) map[id]=Number(v);
-    else delete map[id];
+    var newVal=(v&&!isNaN(Number(v)))?Number(v):null;
+    var curVal=getTargetOnDate(id,today);
+    if(newVal===curVal) return; // 변경 없음이면 이력 추가 안 함
+    newMap[id]=pushTargetChange(newMap[id],today,newVal);
   });
-  api('saveSettings',{EMP_SCORE_TARGETS:map}).then(function(res){
+  api('saveSettings',{EMP_SCORE_TARGETS:newMap}).then(function(res){
     if(!res.ok){alert(res.error||'저장 실패');return;}
-    EMP_SCORE_TARGETS=map;
-    addLog('직원별 환산점수 목표 변경');
+    EMP_SCORE_TARGETS=newMap;
+    addLog('직원별 환산점수 목표 변경 (오늘부터 적용)');
     closeM('m-emptargets');
     loadDash(_dashDate);
   });
@@ -2687,21 +2779,28 @@ function loadAllPerf(){
   api('getPerfs',{empId:empId,s:s,e:e}).then(function(res){
     if(!res.ok){el.innerHTML=alHtml(res.error,'er');return;}
     var perfs=res.perfs;
+    perfs.sort(function(a,b){
+      if(a.date!==b.date) return a.date<b.date?-1:1;
+      return (a.empName||'').localeCompare(b.empName||'');
+    });
     if(!perfs.length){el.innerHTML='<div class="empty"><div class="ei">📋<\/div><p>조건에 맞는 실적 없음<\/p><\/div>';return;}
     var h='<div class="tw"><table class="dt"><thead><tr><th>날짜<\/th><th>직원<\/th><th>근태<\/th>';
     FIELDS.forEach(function(f){h+='<th>'+f.l+'<\/th>';});
-    h+='<th>기타업무<\/th><th>합계<\/th><th style="background:#EEF3FD;color:var(--ad)">환산점수<\/th><th><\/th><\/tr><\/thead><tbody>';
+    h+='<th>기타업무<\/th><th>합계<\/th><th style="background:#EEF3FD;color:var(--ad)">환산점수<\/th><th style="background:#EEF3FD;color:var(--ad)">시간당<\/th><th><\/th><\/tr><\/thead><tbody>';
     perfs.forEach(function(p){
       var sm={};FIELDS.forEach(function(f){sm[f.k]=0;});var ea=[];
       p.rows.forEach(function(r){FIELDS.forEach(function(f){sm[f.k]+=r[f.k]||0;});if(r['기타업무'])ea=ea.concat(r['기타업무'].split(',').filter(Boolean));});
       var tot=FIELDS.reduce(function(s,f){return s+sm[f.k];},0);
       var ws=calcTW(p.rows);
+      var hrs=calcActiveHours(p.rows);
+      var hourly=hrs>0?(ws/hrs).toFixed(2):'0.00';
       var etcU=[]; ea.forEach(function(x){if(etcU.indexOf(x)===-1)etcU.push(x);});
       var nm=dispName(p.empId,p.empName);
       h+='<tr><td><strong>'+p.date+'<\/strong><\/td><td><strong>'+nm+'<\/strong><\/td><td>'+abdg(p.attendStatus)+'<\/td>';
       FIELDS.forEach(function(f){h+='<td>'+(sm[f.k]||0)+'<\/td>';});
       h+='<td style="font-size:11px;color:var(--tm)">'+(etcU.join(', ')||'-')+'<\/td><td><strong>'+tot+'<\/strong><\/td>'+
         '<td style="background:#EEF3FD;font-weight:700;color:var(--ad)">'+ws.toFixed(2)+'<\/td>'+
+        '<td style="background:#EEF3FD;font-weight:700;color:var(--ad)">'+hourly+'<\/td>'+
         '<td style="white-space:nowrap"><button class="btn btn-se btn-xs ap-edit" data-eid="'+p.empId+'" data-date="'+p.date+'" data-name="'+nm+'">✏️<\/button> <button class="btn btn-dg btn-xs ap-del" data-eid="'+p.empId+'" data-date="'+p.date+'" data-name="'+nm+'">🗑<\/button><\/td><\/tr>';
     });
     el.innerHTML=h+'<\/tbody><\/table><\/div>';
@@ -2715,6 +2814,7 @@ function loadAllPerf(){
 }
 function adminEditPerf(empId,date,name){
   switchTab('input');
+  _returnToAllPerf=true;
   var sel=document.getElementById('ip-emp-sel');
   if(sel){
     sel.value=empId;
@@ -2830,36 +2930,38 @@ function loadEval(){
     if(el){ if(el.innerHTML.trim()) el.style.opacity='0.45'; else el.innerHTML=ldg(); }
   });
 
-  Promise.all([api('getAllUsers',{}), api('getPerfs',{ym:ym})]).then(function(rs){
+  Promise.all([api('getAllUsers',{}), api('getPerfs',{ym:ym}), api('getAnnuals',{ym:ym})]).then(function(rs){
     var allEmps=rs[0].ok?rs[0].employees:[];
     var normalEmps=sortByRank(
       allEmps.filter(function(e){return e.role!=='admin'&&!e.retired;}),
       function(u){return u.name;},function(u){return u.rank;}
     );
     var perfs=rs[1].ok?rs[1].perfs:[];
+    var anns=rs[2].ok?rs[2].annuals:[];
 
     var today=new Date().toISOString().slice(0,10);
     var endOfMonth=ym+'-'+new Date(parseInt(ym.slice(0,4)),parseInt(ym.slice(5,7)),0).getDate().toString().padStart(2,'0');
     var endDate=endOfMonth<today?endOfMonth:today;
     var biz=countBizDays(ym,endDate)||1;
+    var annFracMaps=buildAnnualFractionMaps(anns, ym, endDate);
 
-    // 직원별 환산점수 + 접수건수 집계
-    var scoreMap={}, countMap={};
+    // 직원별 환산점수 + 실근무 시간(시간당 환산점수 계산용) 집계
+    var scoreMap={}, hoursMap={};
     perfs.filter(function(p){return p.date<=endDate;}).forEach(function(p){
       var tw=calcTW(p.rows);
       scoreMap[p.empId]=(scoreMap[p.empId]||0)+tw;
-      var cnt=0;
-      p.rows.forEach(function(r){cnt+=(r['인티추티']||0)+(r['단독']||0)+(r['약갱']||0)+(r['무선']||0);});
-      countMap[p.empId]=(countMap[p.empId]||0)+cnt;
+      hoursMap[p.empId]=(hoursMap[p.empId]||0)+calcActiveHours(p.rows);
     });
 
     var groups={S:[],A:[],B:[],C:[],D:[],nodata:[]};
     normalEmps.forEach(function(e){
       var pt=scoreMap[e.id]||0;
       var hasData=scoreMap[e.id]!==undefined;
-      if(!hasData){groups.nodata.push({e:e,pt:0,cnt:0,gr:null});return;}
+      if(!hasData){groups.nodata.push({e:e,pt:0,hrs:0,gr:null,mTgt:null});return;}
       var gr=getMonthGrade(pt,biz);
-      groups[gr.g].push({e:e,pt:pt,cnt:countMap[e.id]||0,gr:gr});
+      var hasTargetHist=EMP_SCORE_TARGETS[e.id]&&EMP_SCORE_TARGETS[e.id].length;
+      var mTgt=hasTargetHist?calcMonthTargetSum(e.id, ym, endDate, annFracMaps[e.id]):null;
+      groups[gr.g].push({e:e,pt:pt,hrs:hoursMap[e.id]||0,gr:gr,mTgt:mTgt});
     });
     ['S','A','B','C','D'].forEach(function(g){groups[g].sort(function(a,b){return b.pt-a.pt;});});
     groups.nodata.sort(function(a,b){
@@ -2894,16 +2996,15 @@ function loadEval(){
       var grid=document.createElement('div');
       grid.className='emp-grid'; grid.style.marginBottom='18px';
       list.forEach(function(item){
-        var e=item.e, pt=item.pt, cnt=item.cnt, gr=item.gr;
+        var e=item.e, pt=item.pt, hrs=item.hrs, gr=item.gr, mTgt=item.mTgt;
         var card=document.createElement('div');
         card.className='card'; card.style.cursor='pointer';
         var avatarBg=gr?gr.c:(e.color||'#9CA3AF');
         var avatarText=gr?gr.g:e.name[0];
         var avg=biz>0?(pt/biz).toFixed(1):'0.0';
-        var tgt=EMP_SCORE_TARGETS[e.id];
+        var hourly=hrs>0?(pt/hrs).toFixed(2):'0.00';
         var tgtHtml='';
-        if(tgt){
-          var mTgt=tgt*biz;
+        if(mTgt!=null){
           var pct=mTgt>0?Math.min(Math.round(pt/mTgt*100),999):0;
           var col=pct>=100?'var(--ok)':pct>=70?'var(--wn)':'var(--dg)';
           tgtHtml='<div style="margin-top:6px"><div style="font-size:11px;color:var(--tm);margin-bottom:2px">목표 달성률</div>'+
@@ -2914,7 +3015,7 @@ function loadEval(){
           '<div style="display:flex;gap:8px;margin-top:5px;align-items:center">'+
             '<span style="font-size:11px;padding:2px 8px;border-radius:20px;font-weight:700;background:'+gr.bg+';color:'+gr.c+'">'+gr.g+'등급<\/span>'+
             '<span style="font-size:11px;color:var(--tm)">합계 <b style="color:var(--tp)">'+pt.toFixed(1)+'pt<\/b> · 일평균 <b style="color:var(--tp)">'+avg+'pt<\/b><\/span>'+
-            '<span style="font-size:11px;color:var(--tm)">· 접수 <b style="color:var(--tp)">'+cnt+'건<\/b><\/span>'+
+            '<span style="font-size:11px;color:var(--tm)">· 시간당 <b style="color:var(--tp)">'+hourly+'pt<\/b><\/span>'+
           '<\/div>':'';
         card.innerHTML=
           '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'+
@@ -2924,7 +3025,7 @@ function loadEval(){
               '<div style="font-size:12px;color:var(--tm)">'+(e.rank||'-')+' · '+(e.team||'-')+'<\/div>'+
             '<\/div>'+
           '<\/div>'+scoreLine+tgtHtml;
-        card.addEventListener('click',function(){openEvalDetail(e,ym,pt,cnt,biz,gr,perfs);});
+        card.addEventListener('click',function(){openEvalDetail(e,ym,pt,hrs,biz,gr,perfs,mTgt);});
         grid.appendChild(card);
       });
       el.appendChild(grid);
@@ -2933,23 +3034,22 @@ function loadEval(){
 }
 
 // 직원 평가 상세 팝업
-function openEvalDetail(e, ym, pt, cnt, biz, gr, perfs){
+function openEvalDetail(e, ym, pt, hrs, biz, gr, perfs, mTgt){
   var avg=biz>0?(pt/biz).toFixed(1):'0.0';
-  var tgt=EMP_SCORE_TARGETS[e.id];
+  var hourly=hrs>0?(pt/hrs).toFixed(2):'0.00';
   var empPerfs=(perfs||[]).filter(function(p){return p.empId===e.id;})
     .sort(function(a,b){return b.date.localeCompare(a.date);});
 
   // 목표달성률
   var tgtLine='';
-  if(tgt){
-    var mTgt=tgt*biz;
+  if(mTgt!=null){
     var pct=mTgt>0?Math.min(Math.round(pt/mTgt*100),999):0;
     var col=pct>=100?'var(--ok)':pct>=70?'var(--wn)':'var(--dg)';
     tgtLine='<div style="margin:10px 0;padding:10px;background:var(--bg);border-radius:8px">'+
       '<div style="font-size:12px;font-weight:600;color:var(--ts);margin-bottom:6px">목표 달성률<\/div>'+
       '<div class="cb" style="margin-bottom:4px"><div class="cf" style="width:'+Math.min(pct,100)+'%;background:'+col+'"><\/div><\/div>'+
       '<div style="font-size:13px;font-weight:700;color:'+col+'">'+pt.toFixed(1)+' \/ '+mTgt.toFixed(1)+'pt ('+pct+'%)<\/div>'+
-      '<div style="font-size:11px;color:var(--tm);margin-top:2px">일별 목표 '+tgt+'pt × 영업일 '+biz+'일<\/div><\/div>';
+      '<div style="font-size:11px;color:var(--tm);margin-top:2px">일별 목표 합산 (연차 반영) · 영업일 '+biz+'일<\/div><\/div>';
   }
 
   var grBadge=gr?'<span style="font-size:13px;font-weight:700;padding:3px 12px;border-radius:20px;background:'+gr.bg+';color:'+gr.c+'">'+gr.g+'등급<\/span>':'<span style="font-size:13px;color:var(--tm)">실적 없음<\/span>';
@@ -3030,7 +3130,7 @@ function openEvalDetail(e, ym, pt, cnt, biz, gr, perfs){
       '<div class="sc sc-a"><div class="sv">'+pt.toFixed(1)+'<\/div><div class="sl">환산점수(pt)<\/div><\/div>'+
       '<div class="sc sc-o"><div class="sv">'+avg+'<\/div><div class="sl">일평균(pt)<\/div><\/div>'+
       '<div class="sc sc-p"><div class="sv">'+empPerfs.length+'<\/div><div class="sl">입력 일수<\/div><\/div>'+
-      '<div class="sc sc-d"><div class="sv">'+cnt+'<\/div><div class="sl">접수 건수<\/div><\/div>'+
+      '<div class="sc sc-d"><div class="sv">'+hourly+'<\/div><div class="sl">시간당 환산점수(pt)<\/div><\/div>'+
     '<\/div>'+
     tgtLine+
     '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:10px">'+
@@ -3089,7 +3189,7 @@ function openEmpD(id){
       '<\/div>'+
       '<div class="slbl">개인 직원별 목표실적 (환산점수 기준 · 관리자 전용)<\/div>'+
       '<p style="font-size:11px;color:var(--tm);margin-bottom:8px">일일 달성률(건수) 목표와는 별개로, 이 직원의 일별 환산점수(pt) 목표를 지정합니다. 비워두면 미지정 상태로 남습니다.<\/p>'+
-      '<div class="fg" style="margin-bottom:0"><label>일별 목표 환산점수(pt)<\/label><input type="number" min="0" step="0.1" id="ed-score-target" value="'+(EMP_SCORE_TARGETS[u.id]!=null?EMP_SCORE_TARGETS[u.id]:'')+'"><\/div>';
+      '<div class="fg" style="margin-bottom:0"><label>일별 목표 환산점수(pt) · 오늘부터 적용<\/label><input type="number" min="0" step="0.1" id="ed-score-target" value="'+(getCurrentTarget(u.id)!=null?getCurrentTarget(u.id):'')+'"><\/div>';
     var retireBtn=document.getElementById('empd-retire');
     if(retireBtn){
       if(u.retired){
@@ -3140,9 +3240,14 @@ function saveEmpFromModal(){
     var desc=fields.name+' 정보 수정';
     if(pw) desc+=' (비밀번호 변경)';
     addLog(desc);
-    var newMap=Object.assign({},EMP_SCORE_TARGETS);
-    if(scoreTargetVal) newMap[_editEmpId]=Number(scoreTargetVal);
-    else delete newMap[_editEmpId];
+    var newMap={};
+    Object.keys(EMP_SCORE_TARGETS).forEach(function(k){newMap[k]=EMP_SCORE_TARGETS[k].slice();});
+    var today=new Date().toISOString().slice(0,10);
+    var newVal=(scoreTargetVal&&!isNaN(Number(scoreTargetVal)))?Number(scoreTargetVal):null;
+    var curVal=getTargetOnDate(_editEmpId,today);
+    if(newVal!==curVal){
+      newMap[_editEmpId]=pushTargetChange(newMap[_editEmpId],today,newVal);
+    }
     api('saveSettings',{EMP_SCORE_TARGETS:newMap}).then(function(){
       EMP_SCORE_TARGETS=newMap;
       closeM('m-empd');
