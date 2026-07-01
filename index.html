@@ -18,6 +18,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fg{margin-bottom:13px;}
 .fg label{display:block;font-size:13px;font-weight:500;color:var(--ts);margin-bottom:5px;}
 .fg input,.fg select,.fg textarea{width:100%;padding:10px 13px;border:1.5px solid var(--b);border-radius:var(--r);font-size:14px;background:var(--bg);color:var(--tp);outline:none;font-family:inherit;transition:border-color .15s;}
+#etc-items-list .etc-item-row{display:flex;gap:6px;align-items:center;}
+#etc-items-list .etc-item-name{flex:1 1 0;min-width:0;width:auto!important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--bg);}
+#etc-items-list .etc-item-type{flex:0 0 130px;width:130px!important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--s);}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--ac);background:#fff;}
 .fg textarea{resize:vertical;min-height:70px;}
 .hint{text-align:center;margin-top:14px;font-size:12px;color:var(--tm);padding:10px;background:var(--bg);border-radius:8px;line-height:1.8;}
@@ -1305,10 +1308,9 @@ function addEtcItemRow(name,type){
   if(!wrap) return;
   var row=document.createElement('div');
   row.className='etc-item-row';
-  row.style.cssText='display:flex;gap:6px;align-items:center';
   row.innerHTML=
-    '<input type="text" class="etc-item-name" value="'+(name||'').replace(/"/g,'&quot;')+'" placeholder="항목명" style="flex:1;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--bg)">'+
-    '<select class="etc-item-type" style="padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--s)">'+
+    '<input type="text" class="etc-item-name" value="'+(name||'').replace(/"/g,'&quot;')+'" placeholder="항목명">'+
+    '<select class="etc-item-type">'+
       '<option value="general"'+(type==='fixed'?'':' selected')+'>일반기타업무</option>'+
       '<option value="fixed"'+(type==='fixed'?' selected':'')+'>고정업무</option>'+
     '<\/select>'+
