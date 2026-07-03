@@ -18,6 +18,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fg{margin-bottom:13px;}
 .fg label{display:block;font-size:13px;font-weight:500;color:var(--ts);margin-bottom:5px;}
 .fg input,.fg select,.fg textarea{width:100%;padding:10px 13px;border:1.5px solid var(--b);border-radius:var(--r);font-size:14px;background:var(--bg);color:var(--tp);outline:none;font-family:inherit;transition:border-color .15s;}
+#etc-items-list .etc-item-row{display:flex;gap:6px;align-items:center;}
+#etc-items-list .etc-item-name{flex:1 1 0 !important;min-width:0 !important;width:auto !important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--bg);}
+#etc-items-list .etc-item-type{flex:0 0 130px !important;width:130px !important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--s);}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--ac);background:#fff;}
 .fg textarea{resize:vertical;min-height:70px;}
 .hint{text-align:center;margin-top:14px;font-size:12px;color:var(--tm);padding:10px;background:var(--bg);border-radius:8px;line-height:1.8;}
@@ -360,7 +363,7 @@ table.pt td.otc{background:#FFF8F8;}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div class="card">
           <div class="cttl" style="margin-bottom:12px">일일 순위 및 등급</div>
-          <div style="font-size:11px;color:var(--tm);margin-bottom:8px">S≥32 / A≥28 / B≥24 / C≥20 / D&lt;20</div>
+          <div style="font-size:11px;color:var(--tm);margin-bottom:8px">SS≥팀평균125% / S≥100% / A≥80% / B≥60% / C≥40% / D&lt;40%</div>
           <div id="dash-rank"></div>
         </div>
         <!-- 당월 연차 -->
@@ -1306,10 +1309,9 @@ function addEtcItemRow(name,type){
   if(!wrap) return;
   var row=document.createElement('div');
   row.className='etc-item-row';
-  row.style.cssText='display:flex;gap:6px;align-items:center';
   row.innerHTML=
-    '<input type="text" class="etc-item-name" value="'+(name||'').replace(/"/g,'&quot;')+'" placeholder="항목명" style="flex:1;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--bg)">'+
-    '<select class="etc-item-type" style="padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--s)">'+
+    '<input type="text" class="etc-item-name" value="'+(name||'').replace(/"/g,'&quot;')+'" placeholder="항목명">'+
+    '<select class="etc-item-type">'+
       '<option value="general"'+(type==='fixed'?'':' selected')+'>일반기타업무</option>'+
       '<option value="fixed"'+(type==='fixed'?' selected':'')+'>고정업무</option>'+
     '<\/select>'+
@@ -2090,9 +2092,9 @@ function moveDashDate(d){
   loadDash(dt.toISOString().slice(0,10));
 }
 
-// 등급 계산
-// teamAvg(팀 일일 평균 환산점수)를 넘기면 상대 등급, 없으면 절대값 기준(월간 평가 등)
-// SS:평균x125%+ / S:100%+ / A:80%+ / B:60%+ / C:40%+ / F:미만
+// 등급 계산 (팀 평균 기준 상대 등급)
+// teamAvg 있으면: SS≥125% / S≥100% / A≥80% / B≥60% / C≥40% / D<40%
+// teamAvg 없으면: 절대값 fallback (SS≥50 / S≥40 / A≥32 / B≥24 / C≥16 / D<16)
 function getGrade(pt, teamAvg){
   if(teamAvg && teamAvg > 0){
     var r = pt / teamAvg;
@@ -2103,7 +2105,6 @@ function getGrade(pt, teamAvg){
     if(r >= 0.40) return {g:'C', c:'#BA7517',bg:'#FAEEDA'};
     return          {g:'D', c:'#A32D2D',bg:'#FCEBEB'};
   }
-  // teamAvg 없을 때 절대값 기준 (월간 평가 fallback)
   if(pt>=50) return {g:'SS',c:'#B8860B',bg:'#FFF8DC'};
   if(pt>=40) return {g:'S', c:'#534AB7',bg:'#EEEDFE'};
   if(pt>=32) return {g:'A', c:'#1D9E75',bg:'#E1F5EE'};
@@ -2339,7 +2340,6 @@ function loadDash(dateStr){
       _dayWFallback[p.empId]=p.empName;
     });
     var sorted = Object.entries(empDayW).sort(function(a,b){return b[1]-a[1];});
-    // 팀 일일 평균 = 실적 올린 직원들 환산점수 총합 ÷ 실적 올린 직원 수
     var dayTotalPt = sorted.reduce(function(s,kv){return s+kv[1];},0);
     var dayTeamAvg = sorted.length > 0 ? dayTotalPt / sorted.length : 0;
     if(!sorted.length){
@@ -2970,12 +2970,8 @@ function loadEval(){
       hoursMap[p.empId]=(hoursMap[p.empId]||0)+calcActiveHours(p.rows);
     });
 
-    // 팀 월 평균 = 실적 있는 직원 환산점수 합계 ÷ 실적 있는 직원 수
-    var monthScoreVals = Object.values(scoreMap);
-    var monthTeamAvg = monthScoreVals.length > 0
-      ? monthScoreVals.reduce(function(s,v){return s+v;},0) / monthScoreVals.length
-      : 0;
-
+    var monthScoreVals=Object.values(scoreMap);
+    var monthTeamAvg=monthScoreVals.length>0?monthScoreVals.reduce(function(s,v){return s+v;},0)/monthScoreVals.length:0;
     var groups={SS:[],S:[],A:[],B:[],C:[],D:[],nodata:[]};
     normalEmps.forEach(function(e){
       var pt=scoreMap[e.id]||0;
@@ -2986,7 +2982,7 @@ function loadEval(){
       var mTgt=hasTargetHist?calcMonthTargetSum(e.id, ym, endDate, annFracMaps[e.id]):null;
       groups[gr.g].push({e:e,pt:pt,hrs:hoursMap[e.id]||0,gr:gr,mTgt:mTgt});
     });
-    ['SS','S','A','B','C','D'].forEach(function(g){groups[g].sort(function(a,b){return b.pt-a.pt;});});
+    ['SS','S','A','B','C','D'].forEach(function(g){groups[g].sort(function(a,b){return b.pt-a.pt;})});
     groups.nodata.sort(function(a,b){
       var ri=rankIdx(a.e.rank)-rankIdx(b.e.rank);
       return ri!==0?-ri:(a.e.name||'').localeCompare(b.e.name||'');
