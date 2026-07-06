@@ -21,6 +21,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #etc-items-list .etc-item-row{display:flex;gap:6px;align-items:center;}
 #etc-items-list .etc-item-name{flex:1 1 0 !important;min-width:0 !important;width:auto !important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--bg);}
 #etc-items-list .etc-item-type{flex:0 0 130px !important;width:130px !important;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:var(--s);}
+/* ── 스킬 토글 스위치 & 카드 ───────────────────────── */
+.tgl{position:relative;display:inline-block;width:36px;height:21px;flex-shrink:0;cursor:pointer;}
+.tgl input{opacity:0;width:0;height:0;position:absolute;}
+.tgl .tgl-sl{position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bs);border-radius:22px;transition:.15s;}
+.tgl .tgl-sl:before{position:absolute;content:"";height:15px;width:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+.tgl input:checked + .tgl-sl{background:var(--ac);}
+.tgl input:checked + .tgl-sl:before{transform:translateX(15px);}
+.skill-cat-card{background:var(--bg);border:1.5px solid var(--b);border-radius:8px;padding:12px;}
+.skill-cat-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.skill-cat-name{font-size:13px;font-weight:700;color:var(--tp);flex:1;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;background:var(--s);}
+.skill-item-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.skill-item-row input{flex:1;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:var(--s);}
+.skill-tgl-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--b);}
+.skill-tgl-row:last-child{border-bottom:none;}
+.skill-tgl-label{font-size:12.5px;color:var(--tp);}
+.skill-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;background:var(--al);color:var(--ad);margin:2px;}
+.skill-badge.off{background:var(--bg);color:var(--tm);}
+.seat-card .seat-ext{font-size:10px;color:var(--tm);font-family:monospace;margin-top:1px;}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--ac);background:#fff;}
 .fg textarea{resize:vertical;min-height:70px;}
 .hint{text-align:center;margin-top:14px;font-size:12px;color:var(--tm);padding:10px;background:var(--bg);border-radius:8px;line-height:1.8;}
@@ -156,6 +174,7 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-hham{background:#EEEDFE;color:#3C3489;}
 .cc-hhpm{background:#EEEDFE;color:#3C3489;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
+.cc-hw{background:#E8ECF7;color:#2A3A7A;}
 .cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;}
 .cpop.open{display:block;}
 .cpop h4{font-size:13px;font-weight:600;margin-bottom:10px;}
@@ -297,6 +316,7 @@ table.pt td.otc{background:#FFF8F8;}
           <span class="cc cc-hpm" style="display:inline-block">오후반차</span>
           <span class="cc cc-hham" style="display:inline-block">오전반반차</span>
           <span class="cc cc-hhpm" style="display:inline-block">오후반반차</span>
+          <span class="cc cc-hw" style="display:inline-block">휴일근무 (토/일)</span>
           <span class="cc cc-ot" style="display:inline-block">야근</span>
           <span style="font-size:12px;color:var(--tm);margin-left:4px" id="cal-hint">※ 날짜 클릭 → 본인 연차 등록</span>
         </div>
@@ -370,7 +390,7 @@ table.pt td.otc{background:#FFF8F8;}
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <div class="cttl">당월 연차자 현황</div>
-            <span id="dash-annual-more" style="display:none;font-size:12px;color:var(--ac);cursor:pointer;text-decoration:underline" onclick="switchTab('cal')">연차 달력 전체보기 ▶</span>
+            <span id="dash-annual-more" style="display:none;font-size:12px;color:var(--ac);cursor:pointer;text-decoration:underline" onclick="switchTab('cal')">연차&휴일근무 전체보기 ▶</span>
           </div>
           <div id="dash-annual"><div class="empty"><p>연차자 없음</p></div></div>
         </div>
@@ -466,8 +486,8 @@ table.pt td.otc{background:#FFF8F8;}
     <div class="pg" id="pg-seats">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div class="cttl">🗺️ 자리 배치도</div>
-          <div class="csub">각 자리에서 직원 선택 후 저장 · 이미지 기반 실제 배치</div>
+          <div class="cttl">🗺️ 자리배치도&내선번호</div>
+          <div class="csub">각 자리에서 직원 선택 후 저장 · 이미지 기반 실제 배치 · 내선번호는 내 정보에서 등록</div>
         </div>
         <button class="btn btn-ok btn-sm" id="seats-save-btn" style="display:none">💾 전체 저장</button>
       </div>
@@ -540,7 +560,7 @@ table.pt td.otc{background:#FFF8F8;}
     <div class="pg" id="pg-settings">
       <div class="card" style="margin-top:0">
         <div class="cttl" style="margin-bottom:4px">📅 연차 등록 권한</div>
-        <p style="font-size:13px;color:var(--ts);margin-bottom:12px">연차 달력에서 직원이 본인 연차를 직접 등록할 수 있는지 설정합니다.</p>
+        <p style="font-size:13px;color:var(--ts);margin-bottom:12px">연차&휴일근무 달력에서 직원이 본인 연차를 직접 등록할 수 있는지 설정합니다.</p>
         <div class="fg" style="max-width:280px">
           <label>등록 권한</label>
           <select id="annual-mode-edit">
@@ -590,6 +610,16 @@ table.pt td.otc{background:#FFF8F8;}
         <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
           <button class="btn btn-pr btn-sm" id="dropdown-save-btn">저장</button>
           <span id="dropdown-save-result" style="font-size:12px"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-top:0">
+        <div class="cttl" style="margin-bottom:4px">🧩 스킬 항목 관리 (관리자 전용)</div>
+        <p style="font-size:13px;color:var(--ts);margin-bottom:12px">직원 관리 → 직원 상세에서 켜고 끄는 스킬의 카테고리·항목을 관리합니다. 카테고리/항목을 추가·삭제할 수 있으며, 기존 직원의 스킬 온오프 값은 그대로 유지됩니다.</p>
+        <div id="skill-cat-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:10px"></div>
+        <button type="button" class="btn btn-se btn-xs" id="skill-cat-add-btn">+ 카테고리 추가</button>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-pr btn-sm" id="skill-catalog-save-btn">저장</button>
+          <span id="skill-catalog-save-result" style="font-size:12px"></span>
         </div>
       </div>
     </div>
@@ -660,6 +690,7 @@ table.pt td.otc{background:#FFF8F8;}
       <div class="fg"><label>도큐레이 아이디</label><input type="text" id="mi-doc"></div>
       <div class="fg"><label>에스원 아이디</label><input type="text" id="mi-s1"></div>
       <div class="fg"><label>전산 PC 비밀번호 <span id="mi-pcpw-warn" style="display:none;color:var(--wn)">⚠️ 30일 이상 미변경</span></label><input type="password" id="mi-pcpw" placeholder="전산 PC 로그인 비밀번호"></div>
+      <div class="fg"><label>내선번호 <span style="font-size:11px;color:var(--tm)">(4자리 숫자, 자리배치도에 표시됨)</span></label><input type="text" id="mi-ext" maxlength="4" placeholder="예: 1234"></div>
     </div>
     <div class="mact"><button class="btn btn-se" id="myinfo-cancel">취소</button><button class="btn btn-pr" style="width:auto" id="myinfo-ok">저장</button></div>
   </div>
@@ -744,7 +775,8 @@ var ATYPES=[
   {k:'오전반차',l:'오전반차',c:'cc-ham'},
   {k:'오후반차',l:'오후반차',c:'cc-hpm'},
   {k:'오전반반차',l:'오전반반차',c:'cc-hham'},
-  {k:'오후반반차',l:'오후반반차',c:'cc-hhpm'}
+  {k:'오후반반차',l:'오후반반차',c:'cc-hhpm'},
+  {k:'휴일근무',l:'휴일근무',c:'cc-hw',weekendOnly:true}
 ];
 var W={인티추티:1,무선:1,전화단독:1/3,약갱:1/3,선약:1/5,기가아이즈:2/3,상품권:4/15};
 // ── 시간대별 환산점수 상한/보너스 (관리자가 '설정' 탭에서 수정 가능) ──
@@ -757,6 +789,13 @@ var ETC_TYPES={};
 
 // ── 팀 목록 (관리자가 '설정' 탭에서 수정 가능, 기본값 2개) ──
 var TEAMS_FLAT=['우신기술사업부','우신1팀'];
+// ── 스킬 카테고리/항목 (관리자가 '설정' 탭에서 수정 가능) ──
+var SKILL_CATALOG=[
+  {cat:'인증 및 간편신청서',items:['신규','약정갱신','상품권/청구매체(SO처리포함)','간편신청서 작성']},
+  {cat:'KOS SO 처리',items:['조회','유선 기본접수','외국인·사업자 접수','유선 심화접수','무선 유심개통 및 SO처리','기본SO처리','약정갱신','개통확인']},
+  {cat:'그외',items:['인입전화응대','OSS확인','웹회신·카톡·웍스·채널 응대','SRTT(VOC)처리','이미징처리','신입교육','정책관련 업무','정산관련 업무']}
+];
+function skillKey(cat,item){ return cat+'::'+item; }
 // 팀 드롭다운 HTML 생성
 function buildTeamOptions(selVal){
   var h='<option value="">-- 팀 선택 --<\/option>';
@@ -954,6 +993,7 @@ function loadGlobalSettings(cb){
       if(s.ETC_TYPES) ETC_TYPES=s.ETC_TYPES;
       if(s.ETC_ITEMS&&s.ETC_ITEMS.length){ETC.length=0;ETC.push.apply(ETC,s.ETC_ITEMS);}
       if(s.TEAMS_FLAT&&s.TEAMS_FLAT.length){TEAMS_FLAT.length=0;TEAMS_FLAT.push.apply(TEAMS_FLAT,s.TEAMS_FLAT);}
+      if(s.skillCatalog&&s.skillCatalog.length){SKILL_CATALOG.length=0;SKILL_CATALOG.push.apply(SKILL_CATALOG,s.skillCatalog);}
     }
     if(cb) cb();
   });
@@ -1169,13 +1209,13 @@ function showApp(){
     renderTabs([
       {id:'dash',l:'📊 대시보드',p:'pg-dash'},
       {id:'allperf',l:'📋 전체 실적',p:'pg-allperf'},
-      {id:'cal',l:'📅 연차 달력',p:'pg-cal'},
+      {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
       {id:'emps',l:'👥 직원 관리',p:'pg-emps'},
       {id:'eval',l:'📈 직원 평가',p:'pg-eval'},
       {id:'input',l:'✏️ 실적 입력',p:'pg-input'},
       {id:'my',l:'📋 내 실적',p:'pg-my'},
       {id:'myinfo',l:'👤 내 정보',p:'pg-myinfo'},
-      {id:'seats',l:'🗺️ 자리 배치도',p:'pg-seats'},
+      {id:'seats',l:'🗺️ 자리배치도&내선번호',p:'pg-seats'},
       {id:'ip',l:'🌐 IP 현황',p:'pg-ip'},
       {id:'settings',l:'⚙️ 설정',p:'pg-settings'}
     ]);
@@ -1195,8 +1235,8 @@ function showApp(){
     renderTabs([
       {id:'input',l:'✏️ 실적 입력',p:'pg-input'},
       {id:'my',l:'📋 내 실적',p:'pg-my'},
-      {id:'cal',l:'📅 연차 달력',p:'pg-cal'},
-      {id:'seats',l:'🗺️ 자리 배치도',p:'pg-seats'},
+      {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
+      {id:'seats',l:'🗺️ 자리배치도&내선번호',p:'pg-seats'},
       {id:'myinfo',l:'👤 내 정보',p:'pg-myinfo'},
       {id:'ip',l:'🌐 IP 현황',p:'pg-ip'}
     ]);
@@ -1296,6 +1336,7 @@ function loadSettingsTab(){
   renderEtcItemsEditor();
   var teamsEl=document.getElementById('teams-flat-edit');
   if(teamsEl) teamsEl.value=TEAMS_FLAT.join('\n');
+  renderSkillCatalogEditor();
 }
 // 기타업무 항목 편집 UI: 항목명 입력 + 고정업무/일반 선택 드롭박스 + 삭제 버튼, 한 줄씩
 function renderEtcItemsEditor(){
@@ -1378,6 +1419,70 @@ function saveDropdowns(){
     if(resEl) resEl.innerHTML='<span style="color:var(--ok)">✅ 저장됨 — 다음 화면부터 반영됩니다<\/span>';
     addLog('드롭박스 목록 변경 (기타업무/팀명)');
     buildPerfTable();
+  });
+}
+
+// ── 스킬 항목 관리 (설정 탭) ──────────────────────
+function renderSkillCatalogEditor(){
+  var wrap=document.getElementById('skill-cat-list');
+  if(!wrap) return;
+  wrap.innerHTML='';
+  SKILL_CATALOG.forEach(function(catObj,ci){ wrap.appendChild(buildSkillCatCard(catObj,ci)); });
+}
+function buildSkillCatCard(catObj,ci){
+  var card=document.createElement('div');
+  card.className='skill-cat-card';
+  card.dataset.ci=ci;
+  card.innerHTML=
+    '<div class="skill-cat-hd">'+
+      '<input type="text" class="skill-cat-name" value="'+(catObj.cat||'').replace(/"/g,'&quot;')+'" placeholder="카테고리명">'+
+      '<button type="button" class="btn btn-dg btn-xs skill-cat-del" style="margin-left:8px">카테고리 삭제</button>'+
+    '<\/div>'+
+    '<div class="skill-item-list"><\/div>'+
+    '<button type="button" class="btn btn-se btn-xs skill-item-add">+ 항목 추가</button>';
+  var itemList=card.querySelector('.skill-item-list');
+  (catObj.items||[]).forEach(function(name){ itemList.appendChild(buildSkillItemRow(name)); });
+  card.querySelector('.skill-cat-del').addEventListener('click',function(){
+    if(confirm('이 카테고리와 하위 항목을 모두 삭제할까요? (직원별로 이미 켜져있던 값은 더 이상 표시되지 않습니다)')) card.remove();
+  });
+  card.querySelector('.skill-item-add').addEventListener('click',function(){
+    itemList.appendChild(buildSkillItemRow(''));
+  });
+  return card;
+}
+function buildSkillItemRow(name){
+  var row=document.createElement('div');
+  row.className='skill-item-row';
+  row.innerHTML=
+    '<input type="text" class="skill-item-name" value="'+(name||'').replace(/"/g,'&quot;')+'" placeholder="항목명">'+
+    '<button type="button" class="btn btn-dg btn-xs skill-item-del">삭제</button>';
+  row.querySelector('.skill-item-del').addEventListener('click',function(){ row.remove(); });
+  return row;
+}
+function addSkillCategory(){
+  var wrap=document.getElementById('skill-cat-list');
+  if(!wrap) return;
+  wrap.appendChild(buildSkillCatCard({cat:'',items:['']}, wrap.children.length));
+}
+function saveSkillCatalog(){
+  var cards=[].slice.call(document.querySelectorAll('#skill-cat-list .skill-cat-card'));
+  var catalog=[];
+  cards.forEach(function(card){
+    var cat=(card.querySelector('.skill-cat-name').value||'').trim();
+    if(!cat) return;
+    var items=[].slice.call(card.querySelectorAll('.skill-item-name'))
+      .map(function(inp){ return (inp.value||'').trim(); })
+      .filter(Boolean);
+    if(items.length) catalog.push({cat:cat,items:items});
+  });
+  if(!catalog.length){ alert('카테고리와 항목이 최소 1개 이상 있어야 합니다.'); return; }
+  api('saveSettings',{skillCatalog:catalog}).then(function(res){
+    var resEl=document.getElementById('skill-catalog-save-result');
+    if(!res.ok){ if(resEl) resEl.innerHTML='<span style="color:var(--dg)">'+(res.error||'저장 실패')+'<\/span>'; return; }
+    SKILL_CATALOG.length=0; SKILL_CATALOG.push.apply(SKILL_CATALOG,catalog);
+    if(resEl) resEl.innerHTML='<span style="color:var(--ok)">✅ 저장됨<\/span>';
+    addLog('스킬 항목 관리 변경');
+    renderSkillCatalogEditor();
   });
 }
 
@@ -1903,7 +2008,7 @@ function refreshCPopState(date){
       tc.innerHTML='<div style="font-size:12px;color:var(--ts);margin-bottom:8px;line-height:1.8">'+
         others.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+'<\/div>';}).join('')+'<\/div>';
     }
-    ATYPES.forEach(function(t){
+    ATYPES.filter(function(t){return !t.weekendOnly||isWeekend(date);}).forEach(function(t){
       var btn=document.createElement('button');
       btn.className='at-btn'+(myExist&&myExist.type===t.k?' sel':'');
       btn.textContent=t.l;
@@ -1915,7 +2020,7 @@ function refreshCPopState(date){
   document.getElementById('cpop-lbl').textContent=date+' - '+targetName;
   var exist=cAn.find(function(a){return a.empId===targetId&&a.date===date;});
   document.getElementById('cpop-del').style.display=exist?'inline-flex':'none';
-  ATYPES.forEach(function(t){
+  ATYPES.filter(function(t){return !t.weekendOnly||isWeekend(date);}).forEach(function(t){
     var btn=document.createElement('button');
     btn.className='at-btn'+(exist&&exist.type===t.k?' sel':'');
     btn.textContent=t.l;
@@ -2020,7 +2125,7 @@ function loadMyInfo(){
     el.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">📋 기본 정보 (관리자 등록)<\/div>'+
-      ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+
+      ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+ir('내선번호',u.ext||'미등록')+
       ir('목표실적(일별 환산점수)',getCurrentTarget(u.id)!=null?getCurrentTarget(u.id)+'pt':'미지정')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 메인 코스<\/div>'+
       ir('코스 아이디',u.cid1||'-')+irpw('코스 비밀번호',u.cpw1,'cpw1')+irpw('IDMS 비밀번호',u.idms1,'idms1')+'<\/div>'+
@@ -2031,8 +2136,23 @@ function loadMyInfo(){
       '<div class="irow"><span class="ilbl">전산 PC 비번'+pcWarn+'<\/span>'+
         (u.pcpw?'<span class="ival tpw" id="pw-pcpw">●●●●●●●●<\/span><span class="tpw-v" onclick="tpwDisp(\'pcpw\',\''+encodeURIComponent(u.pcpw||'')+'\')">👁<\/span>':
         '<span class="ival" style="color:var(--tm)">미등록<\/span>')+
-      '<\/div>'+'<\/div><\/div>';
+      '<\/div>'+'<\/div><\/div>'+
+      '<div class="slbl" style="margin-top:16px">🧩 보유 스킬 <span style="font-size:11px;color:var(--tm);font-weight:400">(관리자만 변경 가능 · 읽기 전용)<\/span><\/div>'+
+      buildMySkillBadgesHtml(u.skills||{});
   });
+}
+// 본인 스킬을 뱃지 형태로 읽기 전용 표시 (켜진 항목만 강조, 꺼진 항목은 흐리게)
+function buildMySkillBadgesHtml(skillsObj){
+  var html='<div style="background:var(--bg);border-radius:8px;padding:12px">';
+  SKILL_CATALOG.forEach(function(catObj){
+    html+='<div style="font-size:11px;font-weight:700;color:var(--tm);margin:6px 0 4px">'+catObj.cat+'<\/div>';
+    (catObj.items||[]).forEach(function(item){
+      var on=!!skillsObj[skillKey(catObj.cat,item)];
+      html+='<span class="skill-badge'+(on?'':' off')+'">'+(on?'✓ ':'')+item+'<\/span>';
+    });
+  });
+  html+='<\/div>';
+  return html;
 }
 function ir(l,v){return '<div class="irow"><span class="ilbl">'+l+'<\/span><span class="ival">'+v+'<\/span><\/div>';}
 function irpw(l,v,id){
@@ -2052,6 +2172,7 @@ function openMyInfoEdit(){
   document.getElementById('mi-doc').value=u.doc||'';
   document.getElementById('mi-s1').value=u.s1||'';
   document.getElementById('mi-pcpw').value=u.pcpw||'';
+  document.getElementById('mi-ext').value=u.ext||'';
   // 30일 경고
   var warnEl=document.getElementById('mi-pcpw-warn');
   if(warnEl){
@@ -2068,6 +2189,9 @@ function saveMyInfo(){
   fields.bph=document.getElementById('mi-bph').value.trim();
   fields.doc=document.getElementById('mi-doc').value.trim();
   fields.s1=document.getElementById('mi-s1').value.trim();
+  var extVal=document.getElementById('mi-ext').value.trim();
+  if(extVal && !/^\d{4}$/.test(extVal)){ alert('내선번호는 숫자 4자리로 입력해주세요.'); return; }
+  fields.ext=extVal;
   var newPcpw=document.getElementById('mi-pcpw').value.trim();
   fields.pcpw=newPcpw;
   // PC비번 변경 시 날짜 갱신
@@ -2742,6 +2866,7 @@ function renderSeatCard(el, sid, seat, emp, isA){
     '<div style="font-size:9px;color:var(--tm);margin-bottom:4px">'+seat.label+'<\/div>'+
     '<div class="seat-avatar" style="background:'+color+'">'+initial+'<\/div>'+
     '<div class="'+(emp?'seat-name':'seat-empty')+'">'+name+'<\/div>'+
+    (emp&&emp.ext?'<div class="seat-ext">☎ '+emp.ext+'<\/div>':'')+
     (isA?'<select class="seat-sel" data-sid="'+sid+'">'+empOpts+'<\/select>':'');
 }
 
@@ -2755,7 +2880,7 @@ function saveAllSeats(){
   api('saveAllSeats',{seats:map}).then(function(res){
     if(btn){btn.textContent='💾 전체 저장';btn.disabled=false;}
     if(!res.ok){alert(res.error||'저장 실패');return;}
-    addLog('자리 배치도 저장');
+    addLog('자리배치도&내선번호 저장');
     // 저장된 값으로 _seatData 업데이트 후 카드 즉시 재렌더 (추가 API 호출 없음)
     var isA=CU.role==='admin';
     Object.keys(map).forEach(function(sid){
@@ -3167,6 +3292,19 @@ function openEvalDetail(e, ym, pt, hrs, biz, gr, perfs, mTgt){
 
 
 var _editEmpId=null;
+// 직원 상세(관리자)에서 쓰는 카테고리별 스킬 온오프 토글 HTML 생성
+function buildSkillTogglesHtml(skillsObj){
+  return SKILL_CATALOG.map(function(catObj){
+    var rows=(catObj.items||[]).map(function(item){
+      var key=skillKey(catObj.cat,item);
+      var checked=skillsObj[key]?' checked':'';
+      return '<div class="skill-tgl-row"><span class="skill-tgl-label">'+item+'<\/span>'+
+        '<label class="tgl"><input type="checkbox" class="skill-tgl-input" data-skey="'+key.replace(/"/g,'&quot;')+'"'+checked+'><span class="tgl-sl"><\/span><\/label><\/div>';
+    }).join('');
+    return '<div class="skill-cat-card" style="margin-bottom:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:4px">'+catObj.cat+'<\/div>'+rows+'<\/div>';
+  }).join('');
+}
 function openEmpD(id){
   _editEmpId=id;
   api('getUser',{id:id}).then(function(res){
@@ -3185,6 +3323,7 @@ function openEmpD(id){
       '<div class="fg"><label>연락처<\/label><input type="text" id="ed-phone" value="'+(u.phone||'')+'"><\/div>'+
       '<div class="fg"><label>팀<\/label><select id="ed-team">'+buildTeamOptions(u.team||'')+'<\/select><\/div>'+
       '<div class="fg"><label>직급/직책<\/label><input type="text" id="ed-rank" value="'+(u.rank||'')+'"><\/div>'+
+      '<div class="fg"><label>내선번호 <span style="font-size:11px;color:var(--tm)">(4자리, 자리배치도에 표시)<\/span><\/label><input type="text" id="ed-ext" maxlength="4" value="'+(u.ext||'')+'" placeholder="예: 1234"><\/div>'+
       '<\/div>'+
       '<div class="fg"><label>고정업무<\/label><input type="text" id="ed-duty" value="'+(u.duty||'')+'"><\/div>'+
       '<div class="fg"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
@@ -3192,6 +3331,8 @@ function openEmpD(id){
         (isLastAdmin?' disabled':'')+'>'+
         '<span>관리자 권한'+(isLastAdmin?' <span style="font-size:11px;color:var(--dg)">(마지막 관리자 해제 불가)<\/span>':'')+'<\/span>'+
       '<\/label><\/div>'+
+      '<div class="slbl">보유 스킬 (관리자 전용 · 온오프)<\/div>'+
+      buildSkillTogglesHtml(u.skills||{})+
       '<div class="slbl">본인 등록 계정 (읽기 전용)<\/div>'+
       '<div style="background:var(--bg);border-radius:8px;padding:12px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
       ir('코스 아이디',u.cid1||'-')+ir('서브 코스 아이디',u.cid2||'-')+
@@ -3241,6 +3382,12 @@ function saveEmpFromModal(){
       alert('마지막 관리자의 권한을 해제할 수 없습니다.');return;
     }
   }
+  var extVal=document.getElementById('ed-ext').value.trim();
+  if(extVal && !/^\d{4}$/.test(extVal)){ alert('내선번호는 숫자 4자리로 입력해주세요.'); return; }
+  var skills={};
+  [].slice.call(document.querySelectorAll('#empd-body .skill-tgl-input')).forEach(function(cb){
+    if(cb.checked) skills[cb.dataset.skey]=true;
+  });
   var fields={
     newId:newId,
     name:document.getElementById('ed-name').value.trim(),
@@ -3249,6 +3396,8 @@ function saveEmpFromModal(){
     team:document.getElementById('ed-team').value,
     rank:document.getElementById('ed-rank').value.trim(),
     duty:document.getElementById('ed-duty').value.trim(),
+    ext:extVal,
+    skills:skills,
     role:isAdmin?'admin':'employee'
   };
   var pw=document.getElementById('ed-pw').value;
@@ -3689,6 +3838,10 @@ document.addEventListener('DOMContentLoaded',function(){
   if(ddSaveBtn) ddSaveBtn.addEventListener('click',saveDropdowns);
   var amSaveBtn=document.getElementById('annual-mode-save-btn');
   if(amSaveBtn) amSaveBtn.addEventListener('click',saveAnnualMode);
+  var skCatAddBtn=document.getElementById('skill-cat-add-btn');
+  if(skCatAddBtn) skCatAddBtn.addEventListener('click',addSkillCategory);
+  var skCatSaveBtn=document.getElementById('skill-catalog-save-btn');
+  if(skCatSaveBtn) skCatSaveBtn.addEventListener('click',saveSkillCatalog);
   // 연차 공지 수정
   var cnEdit=document.getElementById('cal-notice-edit-btn');
   var cnCancel=document.getElementById('cal-notice-cancel');
