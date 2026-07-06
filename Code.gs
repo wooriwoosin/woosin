@@ -3,7 +3,7 @@
 //  배포: 웹 앱으로 배포 > 액세스 권한: 모든 사용자
 // ============================================================
 
-var SS_ID = ''; // ← 배포 후 스프레드시트 ID 입력 (URL의 /d/XXXX/edit 부분)
+var SS_ID = '12vPbzL9mZn1gSEXDCdP0cDE0zYSQQLDcx5hTO6OgFod72Lq5SRYp2ddM'; // ← 배포 후 스프레드시트 ID 입력 (URL의 /d/XXXX/edit 부분)
 var SS = null;
 
 function getSheet(name) {
