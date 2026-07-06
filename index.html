@@ -38,7 +38,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .skill-tgl-label{font-size:12.5px;color:var(--tp);}
 .skill-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;background:var(--al);color:var(--ad);margin:2px;}
 .skill-badge.off{background:var(--bg);color:var(--tm);}
-.seat-card .seat-ext{font-size:10px;color:var(--tm);font-family:monospace;margin-top:1px;}
+.seat-card .seat-ext{font-size:15px;font-weight:800;color:var(--ac);margin-top:3px;letter-spacing:.5px;}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--ac);background:#fff;}
 .fg textarea{resize:vertical;min-height:70px;}
 .hint{text-align:center;margin-top:14px;font-size:12px;color:var(--tm);padding:10px;background:var(--bg);border-radius:8px;line-height:1.8;}
@@ -792,8 +792,11 @@ var TEAMS_FLAT=['우신기술사업부','우신1팀'];
 // ── 스킬 카테고리/항목 (관리자가 '설정' 탭에서 수정 가능) ──
 var SKILL_CATALOG=[
   {cat:'인증 및 간편신청서',items:['신규','약정갱신','상품권/청구매체(SO처리포함)','간편신청서 작성']},
-  {cat:'KOS SO 처리',items:['조회','유선 기본접수','외국인·사업자 접수','유선 심화접수','무선 유심개통 및 SO처리','기본SO처리','약정갱신','개통확인']},
-  {cat:'그외',items:['인입전화응대','OSS확인','웹회신·카톡·웍스·채널 응대','SRTT(VOC)처리','이미징처리','신입교육','정책관련 업무','정산관련 업무']}
+  {cat:'유선 기본접수',items:['인터넷/TV','OSS','(신규) 일반전화, 인터넷전화','외국인','사업자 (개인사업자, 법인사업자, 고유번호사업자)']},
+  {cat:'유선 심화접수',items:['(번호이동) 일반전화, 인터넷전화','센트릭스','기가아이즈','약정갱신']},
+  {cat:'무선관련',items:['유심개통','SO처리 (개통,선약,결합 등)']},
+  {cat:'기본SO처리',items:['취소처리','청구매체/자동이체 변경','일정변경','결합변경']},
+  {cat:'그외',items:['인입전화응대 (고객,거래처,기사님,설치점,고객센터,그외 등등)','OSS확인','웹회신,카톡,웍스,채널 응대','SRTT(VOC)처리','이미징처리','신입교육','정책관련 업무','정산관련 업무','개통확인','검수(일일검수,모바일,패밀리 등 검수)']}
 ];
 function skillKey(cat,item){ return cat+'::'+item; }
 // 팀 드롭다운 HTML 생성
@@ -833,7 +836,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbz9nKQNdoTYtTzwAh0hIIv09mV64eocWf0kyPyV_dAz0P6NymkAU8KSjorvRydk5iWUGA/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
