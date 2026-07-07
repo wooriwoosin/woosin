@@ -872,7 +872,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzLfdZSNKGQGZOuHz828OnEsJmvXu43MpAxOmJn36MF-cXcF-w97aEGMfjc68cuefrQfQ/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3524,7 +3524,27 @@ var PA_LEAVE_OPTS=[
 ];
 var PA_CHEONAN_STAFF=['이아름','박윤화']; // 정해진 양식 없이 처리하는 특례 대상자 (필요시 이 목록만 수정)
 
-function paHms2s(str){ if(!str) return 0; var p=String(str).split(':').map(Number); if(p.length<3) return 0; return p[0]*3600+p[1]*60+(p[2]||0); }
+// 통화시간(H:MM:SS) 파싱 - 엑셀/시트가 시간값을 Date객체, 일련번호(소수), 또는
+// "1899-12-30 00:01:15" 같은 날짜접두 문자열로 돌려주는 경우까지 전부 안전하게 처리
+function paHms2s(v){
+  if(v===null||v===undefined||v==='') return 0;
+  // 1) Date 객체로 온 경우 (엑셀 기준일 1899-12-30 등 날짜부분은 무시하고 시:분:초만 사용)
+  if(v instanceof Date){
+    return v.getHours()*3600+v.getMinutes()*60+v.getSeconds();
+  }
+  // 2) 숫자(엑셀 일련번호, 하루=1)로 온 경우 - 소수부만 시간으로 환산
+  if(typeof v==='number'){
+    var frac=v-Math.floor(v);
+    return Math.round(frac*86400);
+  }
+  // 3) 문자열 - 날짜가 앞에 붙어있으면 떼어내고 마지막 HH:MM:SS 패턴만 추출
+  var str=String(v).trim();
+  var m=str.match(/(\d{1,2}):(\d{2}):(\d{2})\s*$/);
+  if(m) return (+m[1])*3600+(+m[2])*60+(+m[3]);
+  var p=str.split(':').map(Number);
+  if(p.length<3||p.some(isNaN)) return 0;
+  return p[0]*3600+p[1]*60+(p[2]||0);
+}
 function paS2hms(s){ s=Math.max(0,Math.round(s)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60; return [h,m,sec].map(function(x){return String(x).padStart(2,'0');}).join(':'); }
 
 function paParseHtmlXls(file, cb){
