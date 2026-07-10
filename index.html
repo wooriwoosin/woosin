@@ -229,6 +229,10 @@ table.pt td.otc{background:#FFF8F8;}
 .pa-c-renew{background:var(--okl);color:#0B6B4F;}
 .pa-c-etc{background:var(--ppl);color:var(--pp);}
 .pa-c-mobile{background:var(--wnl);color:var(--wn);}
+.pa-c-giga{background:#E0F2F1;color:#00695C;}
+.pa-unresolved-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--dgl);}
+.pa-unresolved-row:first-of-type{border-top:none;}
+.pa-unresolved-emp{padding:4px 7px;border:1.5px solid var(--b);border-radius:6px;font-size:12px;}
 .pa-c-call{background:#EEF0F3;color:var(--ts);}
 .pa-c-fixdur{background:var(--wnl);color:var(--wn);padding:6px 8px;}
 .pa-fixdur-select{width:100%;border:none;background:transparent;color:var(--wn);font-weight:800;font-size:12px;text-align:center;cursor:pointer;}
@@ -880,7 +884,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbwfRkY_fgeDVsdPF6sDNRIlWovdNK4HSX7ccLr7kLoYzosobWbCgrk9uysA9cY_Y5IN_A/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3518,7 +3522,7 @@ function loadMyPerf(){
 var PA_EMP=[]; // {id,name,team}
 var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[];
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
-var PA_EVIDENCE={}; var PA_UNMATCHED=[];
+var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_MANUAL_ADJ={};
 var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
@@ -3577,51 +3581,57 @@ function paExtractEntries(history){
   var out=[],m; while((m=re.exec(history))){ out.push({name:m[1],type:m[2],content:m[3].trim(),ts:m[4]}); } return out;
 }
 function paIsInternalName(name){ return !/[()★☆■□○●▲△◆◇\[\]▶]/.test(name); }
-// 이름은 내부직원처럼 보여도, 내용 자체가 "[접수처] xxx [접수자] xxx" 같은 외부 협력점 접수양식이면
-// (예: 대성종합통신 등 협력점이 자기네 접수 내용을 그대로 붙여넣은 경우) 담당자 후보에서 제외
-function paIsExternalFormMemo(content){ return /\[접수처\]/.test(content||''); }
-// 유심카드번호 등 "숫자만 나열된 메모"는 길어도 실제 업무메모가 아니므로 실질내용 판단에서 제외
+// 상권사업부 협력점 + ([접수처] 패턴 또는 상부점에 "대성") 인 건은 아예 집계 대상에서 제외
+function paIsRowExcluded(coop,sangbu,history){
+  coop=coop||''; sangbu=sangbu||'';
+  if(coop.indexOf('상권사업부')===-1) return false;
+  return /\[접수처\]/.test(history||'') || sangbu.indexOf('대성')!==-1;
+}
+// 유심카드번호 등 "숫자만 나열된 메모"는 실제 업무메모가 아님
 function paIsJustNumbers(content){ return /^[\d\s\-\/]+$/.test(content||''); }
-function paPickBestEntry(entries){
+// "상부요청" 타입 + 사은품/입금/유심발송/택배 언급 = 물류담당자 확인 메모 (실제 처리자 아님)
+function paIsLogisticsRequest(type,content){ return type==='상부요청'&&/사은품|입금|유심발송|택배/.test(content||''); }
+// "7/10 고객명 - 팀명 (유심)숫자..." 마감집계 메모 (작성자가 실제 처리자 아닐 수 있음)
+function paIsTallyClose(content){ return /^\d{1,2}\/\d{1,2}\s.+-.+\(유심\)/.test(content||''); }
+// "선약완 / 후첨부완 / 결합완" 식 후처리 체크리스트 (개통 후 후속작업 - 실제개통자 표시 아님, 정식템플릿엔 항상 'ㅇ'불릿이 있어 구분됨)
+function paIsPostProcessChecklist(content){ return /완\s*\/\s*\S*완/.test(content||'')&&!/ㅇ/.test(content||''); }
+function paIsNonWorkMemo(type,content){ return paIsLogisticsRequest(type,content)||paIsTallyClose(content); }
+function paIsSubstantial(content){ return (content.length>=15&&!paIsJustNumbers(content))||/개통완/.test(content); }
+function paPickBestEntry(entries,yuchija){
   if(!entries.length) return null;
-  var substantial=entries.filter(function(e){return e.content.length>=15&&!paIsJustNumbers(e.content);});
-  var pool=(substantial.length?substantial:entries).slice().sort(function(a,b){return b.ts.localeCompare(a.ts);});
+  var real=entries.filter(function(e){return !paIsNonWorkMemo(e.type,e.content)&&!paIsPostProcessChecklist(e.content)&&e.name!==yuchija;});
+  var pool0=real.length?real:entries;
+  var substantial=pool0.filter(function(e){return paIsSubstantial(e.content);});
+  var pool=(substantial.length?substantial:pool0).slice().sort(function(a,b){return b.ts.localeCompare(a.ts);});
   return pool[0];
 }
-// 담당자 판별: 로그 타입을 특정 이름(고객메모/회신요청 등)으로 제한하면 회신완료·상부요청·상부답변·관리메모 등
-// 실제로 쓰이는 다른 표현을 놓치는 문제가 있어서, 타입 제한 없이 "내부직원이 남긴 로그"면 전부 후보로 인정하고
-// 그 중 실질내용(15자 이상) 우선 → 최신순으로 선택한다. (개통/접수 완료 여부는 상태 컬럼에서 이미 확정되므로
-// 여기서는 순수하게 "누가 처리했는지"만 판별하면 됨). 단, 외부 협력점 접수양식([접수처] 패턴)은 제외.
-function paFindWiredStaff(history){
-  var entries=paExtractEntries(history).filter(function(e){return paIsInternalName(e.name)&&!paIsExternalFormMemo(e.content);});
-  var best=paPickBestEntry(entries);
+// 담당자 판별: 타입 제한 없이 "내부직원이 남긴 로그"면 전부 후보로 인정 (유선/무선 공통)
+function paFindStaff(history,yuchija){
+  var entries=paExtractEntries(history).filter(function(e){return paIsInternalName(e.name);});
+  var best=paPickBestEntry(entries,yuchija);
   return best?{name:best.name,ts:best.ts,content:best.content}:null;
 }
-function paFindWirelessStaff(history){
-  var entries=paExtractEntries(history).filter(function(e){return paIsInternalName(e.name)&&!paIsExternalFormMemo(e.content);});
-  var best=paPickBestEntry(entries);
-  return best?{name:best.name,ts:best.ts,content:best.content}:null;
-}
+// 유선 상품명 분류: KT 계열 + 유선기타_(KT-biz)*만 포함, 그 외(타통신사/렌탈/모바일/부가상품/정산관련 등)는 전부 제외(null)
 function paClassifyWiredProduct(name){
   name=name||'';
-  if(name.indexOf('유선기타')===0) return '유선기타';
-  if(name.indexOf('약정갱신')!==-1||name.indexOf('업셀링')!==-1||name.indexOf('전환')!==-1) return '약정갱신';
-  return '신규접수';
+  if(name==='유선기타_(KT-biz)CCTV') return '기가아이즈';
+  if(name==='유선기타_(KT-biz)TV'||name==='유선기타_(KT-biz)인터넷') return '유선기타';
+  if(name==='KT_TV(약정갱신)'||name==='KT_인터넷(약정갱신)'||name==='KT_인_업셀링/전환'||name==='KT_티_업셀링/전환') return '약정갱신';
+  if(name==='KT_TV'||name==='KT_인터넷'||name==='KT_인터넷전화'||name==='KT_일반전화') return '유선신규';
+  return null; // 그 외 전부 제외 (SKT/SKB/LGU+/SKYLIFE/HelloVision/렌탈/모바일/KT_부가상품/정산관련/추가지급 등)
 }
-function paStatusQualifies(category,status,history){
+function paStatusQualifies(category,status){
   status=status||'';
-  if(status.indexOf('보류')!==-1) return false;
-  if(status.indexOf('접수완료')!==-1||status.indexOf('실적확인중')!==-1||status.indexOf('개통완료')!==-1) return true;
-  if(category==='약정갱신'&&status.indexOf('접수중')!==-1) return true;
-  if(status.indexOf('취소')!==-1||status.indexOf('해지')!==-1){ return (history||'').indexOf('접수완료')!==-1||(history||'').indexOf('개통완료')!==-1; }
-  return false;
+  if(category==='약정갱신') return status.indexOf('접수중')!==-1||status.indexOf('개통완료')!==-1;
+  return true; // 유선신규/유선기타/기가아이즈/무선: 상태 무관, 이력에서 담당자만 찾으면 됨
 }
+var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선'];
+function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); return c; }
 
 function paAggregate(){
-  var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={};
+  var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[];
   function addCount(name,cat,customer,ts,content){
-    if(!name) return;
-    if(!counts[name]) counts[name]={신규접수:0,약정갱신:0,유선기타:0,무선:0};
+    if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cat]++;
     var ek=name+'|'+cat; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
     PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content});
@@ -3630,26 +3640,34 @@ function paAggregate(){
   var wiredGroups={};
   PA_WIRED_ROWS.forEach(function(r){
     var cat=paClassifyWiredProduct(r['상품명']);
-    if(!paStatusQualifies(cat,r['개통상태'],r['고객이력'])) return;
-    var key=r['고객명']+'|'+cat; (wiredGroups[key]=wiredGroups[key]||[]).push(r);
+    if(!cat) return;
+    if(!paStatusQualifies(cat,r['개통상태'])) return;
+    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])) return;
+    var custKey=(r['주민번호']||'').trim()||r['고객명'];
+    var key=custKey+'|'+cat; (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명']}).rows.push(r);
   });
   Object.keys(wiredGroups).forEach(function(key){
-    var rows=wiredGroups[key], cat=key.split('|')[1], best=null;
-    rows.forEach(function(r){ var f=paFindWiredStaff(r['고객이력']); if(f&&(!best||f.ts>best.ts)) best=f; });
-    if(best) addCount(best.name,cat,key.split('|')[0],best.ts,best.content);
+    var g=wiredGroups[key], cat=key.split('|')[1], best=null;
+    g.rows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자']); if(f&&(!best||f.ts>best.ts)) best=f; });
+    if(best) addCount(best.name,cat,g.name,best.ts,best.content);
+    else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:'담당자 메모 없음/판별 불가',key:key});
   });
   var wirelessGroups={};
   PA_WIRELESS_ROWS.forEach(function(r){
-    if(!paStatusQualifies('무선',r['개통상태'],r['고객이력'])) return;
-    var key=r['고객명']; (wirelessGroups[key]=wirelessGroups[key]||[]).push(r);
+    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])) return;
+    var custKey=(r['주민번호']||'').trim()||r['고객명'];
+    (wirelessGroups[custKey]=wirelessGroups[custKey]||{rows:[],name:r['고객명']}).rows.push(r);
   });
   Object.keys(wirelessGroups).forEach(function(key){
-    var rows=wirelessGroups[key], best=null;
-    rows.forEach(function(r){
-      var f=paFindWirelessStaff(r['고객이력']);
-      if(f&&(!best||f.ts>best.ts)) best=f;
-    });
-    if(best) addCount(best.name,'무선',key,best.ts,best.content);
+    var g=wirelessGroups[key], best=null;
+    g.rows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자']); if(f&&(!best||f.ts>best.ts)) best=f; });
+    if(best) addCount(best.name,'무선',g.name,best.ts,best.content);
+    else PA_UNRESOLVED.push({customer:g.name,cat:'무선',reason:'담당자 메모 없음/판별 불가',key:key});
+  });
+  // 수기로 추가된 건 반영
+  Object.keys(PA_MANUAL_ADJ).forEach(function(name){
+    if(!counts[name]) counts[name]=paEmptyCounts();
+    PA_CATS.forEach(function(cat){ counts[name][cat]+=(PA_MANUAL_ADJ[name][cat]||0); });
   });
   return counts;
 }
@@ -3803,7 +3821,7 @@ function paRenderResult(){
   wrap.innerHTML=Object.keys(teams).map(function(team){
     var cards=teams[team].map(function(e){
       var st=PA_ROWSTATE[e.id]||(PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0});
-      var c=counts[e.name]||{신규접수:0,약정갱신:0,유선기타:0,무선:0};
+      var c=counts[e.name]||paEmptyCounts();
 
       var leaveSelect='<select class="pa-pill-select" data-emp="'+e.id+'" data-role="leave">'+
         PA_LEAVE_OPTS.map(function(o){return '<option value="'+o.v+'"'+(o.v===st.leave?' selected':'')+'>'+(o.l==='-'?'연차 없음':o.l)+'</option>';}).join('')+'</select>';
@@ -3830,7 +3848,7 @@ function paRenderResult(){
         '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
           '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
         '<div class="pa-counts">'+fixPill+
-          countPill(c,'신규접수','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,undefined,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
+          countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,undefined,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
           callPills+
         '</div></div>';
     }).join('');
@@ -3856,10 +3874,34 @@ function paRenderResult(){
 
   var warnBox=document.getElementById('pa-warn');
   if(warnBox){
+    var html='';
+    if(PA_UNRESOLVED.length){
+      var empOpts='<option value="">직원 선택</option>'+PA_EMP.map(function(e){return '<option value="'+e.name+'">'+e.name+'</option>';}).join('');
+      html+='<div class="pa-warn-box"><b>⚠️ 담당자 미확인 '+PA_UNRESOLVED.length+'건</b> (메모 없음/판별 불가 — 아래에서 직접 추가하거나 그대로 두면 이번 집계에서 빠집니다)<br>'+
+        PA_UNRESOLVED.map(function(u,i){
+          return '<div class="pa-unresolved-row"><b>'+u.customer+'</b> <span style="color:var(--tm)">('+u.cat+' · '+u.reason+')</span> '+
+            '<select class="pa-unresolved-emp" data-idx="'+i+'">'+empOpts+'</select>'+
+            '<button type="button" class="btn btn-se btn-xs pa-unresolved-add" data-idx="'+i+'">+ 이 건 추가</button></div>';
+        }).join('')+'</div>';
+    }
     if(PA_UNMATCHED.length){
       var uniq=Array.from(new Set(PA_UNMATCHED));
-      warnBox.innerHTML='<div class="pa-warn-box">⚠️ 직원목록에 없는 이름 '+uniq.length+'건: '+uniq.join(', ')+'</div>';
-    } else warnBox.innerHTML='';
+      html+='<div class="pa-warn-box">⚠️ 직원목록에 없는 이름 '+uniq.length+'건: '+uniq.join(', ')+'</div>';
+    }
+    warnBox.innerHTML=html;
+    warnBox.querySelectorAll('.pa-unresolved-add').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var idx=+btn.dataset.idx;
+        var sel=warnBox.querySelector('.pa-unresolved-emp[data-idx="'+idx+'"]');
+        var name=sel.value;
+        if(!name){ alert('직원을 선택해주세요.'); return; }
+        var item=PA_UNRESOLVED[idx];
+        if(!PA_MANUAL_ADJ[name]) PA_MANUAL_ADJ[name]=paEmptyCounts();
+        PA_MANUAL_ADJ[name][item.cat]++;
+        PA_UNRESOLVED.splice(idx,1);
+        paRenderResult();
+      });
+    });
   }
   var st=document.getElementById('pa-calc-status');
   if(st) st.textContent='유선 '+PA_WIRED_ROWS.length+'건 / 무선 '+PA_WIRELESS_ROWS.length+'건 로드됨 · '+new Date().toLocaleTimeString('ko-KR');
@@ -3881,11 +3923,11 @@ function paPublish(){
   var counts=paAggregate();
   var rows=PA_EMP.map(function(e){
     var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
-    var c=counts[e.name]||{신규접수:0,약정갱신:0,유선기타:0,무선:0};
+    var c=counts[e.name]||paEmptyCounts();
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
     return {
       empId:e.id, empName:e.name, team:e.team,
-      신규접수:c.신규접수, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 무선:c.무선,
+      유선신규:c.유선신규, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 기가아이즈:c.기가아이즈, 무선:c.무선,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
       땡김콜:ph.P_CONN, 땡김시간:paS2hms(ph.P_TIME),
       고정업무:(st.fixdurNames||[]).join(', '), 연차유형:st.leave||'', VOC:st.voc||0
@@ -3902,6 +3944,7 @@ function paPublish(){
 document.getElementById('pa-publish-btn') && document.getElementById('pa-publish-btn').addEventListener('click',paPublish);
 document.getElementById('pa-date') && document.getElementById('pa-date').addEventListener('change',function(){
   var date=this.value; if(!date) return;
+  PA_MANUAL_ADJ={};
   paLoadAnnualsForDate(date,function(map){
     PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
     Object.keys(map).forEach(function(empId){ if(PA_ROWSTATE[empId]) PA_ROWSTATE[empId].leave=map[empId]; });
@@ -3951,7 +3994,7 @@ function loadAllPerfNewRender(){
         return '<div class="pa-emp-card">'+
           '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div><div class="pa-controls">'+leaveBadge+fixBadge+
             (p.VOC?'<span class="pa-voc-wrap">VOC '+p.VOC+'</span>':'')+'</div></div>'+
-          '<div class="pa-counts">'+pill(p.신규접수,'신규접수','pa-c-new')+pill(p.약정갱신,'약정갱신','pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
+          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,'약정갱신','pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
         '</div>';
       }).join('');
       return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
