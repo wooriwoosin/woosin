@@ -884,7 +884,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxP5UlkZKLj-LFYlX9nNjrkaAvExus3CnEsRIS1tm7gF8dwXWXItibBLWBSVA4Id5zVKw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3605,9 +3605,10 @@ function paIsSubstantial(content){ return (content.length>=15&&!paIsJustNumbers(
 function paIsTemplateFormat(content){ return /ㅇ\s*(접속번호|서비스번호|상품|결합|요금제)/.test(content||''); }
 function paPickBestEntry(entries,yuchija,targetDate){
   if(!entries.length) return null;
-  // 집계 날짜가 지정되면, 그 날짜에 남겨진 메모만 후보로 인정 (로우데이터에 다른날 이력까지 섞여있을 수 있음)
-  // 주의: 해당 날짜에 메모가 하나도 없으면 무필터로 폴백하지 않음 (다른날 이력이 잘못 끼어드는 것 방지)
-  var pool00=targetDate?entries.filter(function(e){return e.ts.indexOf(targetDate)===0;}):entries;
+  // 집계 날짜가 지정되면, 그 날짜 "이전(당일 포함)"에 남겨진 메모만 후보로 인정.
+  // (담당자가 하루 전에 미리 메모를 남기고 다음날 접수되는 경우가 있어 정확히 같은 날짜만 보면 놓침.
+  //  반대로 집계일보다 미래 날짜 메모는 "취소 후 다른 날 재접수" 같은 별개 건일 수 있어 제외해야 함)
+  var pool00=targetDate?entries.filter(function(e){return e.ts.slice(0,10)<=targetDate;}):entries;
   if(!pool00.length) return null;
   var real=pool00.filter(function(e){return !paIsNonWorkMemo(e.type,e.content)&&!paIsPostProcessChecklist(e.content)&&e.name!==yuchija;});
   var pool0=real.length?real:pool00;
@@ -3651,7 +3652,6 @@ function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); retur
 
 function paAggregate(){
   var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[]; PA_EXCLUDED=[];
-  var excludedKeys={};
   var targetDate=(document.getElementById('pa-date')||{}).value||'';
   function addCount(name,cat,customer,ts,content){
     if(!counts[name]) counts[name]=paEmptyCounts();
@@ -3660,51 +3660,47 @@ function paAggregate(){
     PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' ('+cat+')');
   }
+  // 그룹(고객+카테고리) 단위로 판단: 같은 고객이 상품(TV/인터넷 등) 여러 건으로 나뉘어 있을 때,
+  // 그중 한 건만 이력이 부실해도 "제외"로 잘못 표시되지 않도록, 제외여부는 그룹 전체 기준으로 한번만 판단한다.
+  function processGroups(groups,cat){
+    Object.keys(groups).forEach(function(key){
+      var g=groups[key];
+      // 그룹의 모든 행이 상권사업부·대성이면 제외
+      if(g.rows.every(function(r){return paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력']);})){
+        PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'상권사업부 협력점 + 상부점 "대성"(또는 이력에 [접수처] 외부양식) — 우리 처리 대상 아님'});
+        return;
+      }
+      // 상권사업부 행은 후보에서만 제외하고, 나머지 행으로 정상 진행
+      var eligibleRows=g.rows.filter(function(r){return !paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력']);});
+      // 그룹의 모든(제외 안 된) 행이 "접수 전 취소/보류(정식이력없음)"면 제외
+      if(eligibleRows.every(function(r){return paIsCancelledBeforeRealWork(r['개통상태'],r['고객이력']);})){
+        PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'취소/보류 상태이고 서비스번호·접속번호·일정 등 정식 접수이력이 전혀 없음 (접수 전 취소로 판단)'});
+        return;
+      }
+      var best=null;
+      eligibleRows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자'],targetDate); if(f&&(!best||f.ts>best.ts)) best=f; });
+      if(best) addCount(best.name,cat,g.name,best.ts,best.content);
+      else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:'담당자 메모 없음/판별 불가',key:key});
+    });
+  }
   var wiredGroups={};
   PA_WIRED_ROWS.forEach(function(r){
     var cat=paClassifyWiredProduct(r['상품명']);
     if(!cat) return;
     if(!paStatusQualifies(cat,r['개통상태'])) return;
-    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])){
-      var exKey=r['고객명']+'|'+cat;
-      if(!excludedKeys[exKey]){ excludedKeys[exKey]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:cat,reason:'상권사업부·대성 협력사'}); }
-      return;
-    }
-    if(paIsCancelledBeforeRealWork(r['개통상태'],r['고객이력'])){
-      var exKey2=r['고객명']+'|'+cat;
-      if(!excludedKeys[exKey2]){ excludedKeys[exKey2]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:cat,reason:'접수 전 취소/보류 (정식 이력 없음)'}); }
-      return;
-    }
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
-    var key=custKey+'|'+cat; (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명']}).rows.push(r);
+    var key=custKey+'|'+cat; (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat}).rows.push(r);
   });
-  Object.keys(wiredGroups).forEach(function(key){
-    var g=wiredGroups[key], cat=key.split('|')[1], best=null;
-    g.rows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자'],targetDate); if(f&&(!best||f.ts>best.ts)) best=f; });
-    if(best) addCount(best.name,cat,g.name,best.ts,best.content);
-    else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:'담당자 메모 없음/판별 불가',key:key});
-  });
+  var byCat={};
+  Object.keys(wiredGroups).forEach(function(key){ var cat=wiredGroups[key].cat; (byCat[cat]=byCat[cat]||{})[key]=wiredGroups[key]; });
+  Object.keys(byCat).forEach(function(cat){ processGroups(byCat[cat],cat); });
+
   var wirelessGroups={};
   PA_WIRELESS_ROWS.forEach(function(r){
-    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])){
-      var exKey2=r['고객명']+'|무선';
-      if(!excludedKeys[exKey2]){ excludedKeys[exKey2]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:'무선',reason:'상권사업부·대성 협력사'}); }
-      return;
-    }
-    if(paIsCancelledBeforeRealWork(r['개통상태'],r['고객이력'])){
-      var exKey3=r['고객명']+'|무선';
-      if(!excludedKeys[exKey3]){ excludedKeys[exKey3]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:'무선',reason:'접수 전 취소/보류 (정식 이력 없음)'}); }
-      return;
-    }
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     (wirelessGroups[custKey]=wirelessGroups[custKey]||{rows:[],name:r['고객명']}).rows.push(r);
   });
-  Object.keys(wirelessGroups).forEach(function(key){
-    var g=wirelessGroups[key], best=null;
-    g.rows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자'],targetDate); if(f&&(!best||f.ts>best.ts)) best=f; });
-    if(best) addCount(best.name,'무선',g.name,best.ts,best.content);
-    else PA_UNRESOLVED.push({customer:g.name,cat:'무선',reason:'담당자 메모 없음/판별 불가',key:key});
-  });
+  processGroups(wirelessGroups,'무선');
   // 수기로 추가된 건 반영
   PA_MANUAL_ADJ.forEach(function(m){
     if(!counts[m.name]) counts[m.name]=paEmptyCounts();
@@ -3926,8 +3922,14 @@ function paRenderResult(){
         }).join('')+'</div>';
     }
     if(PA_EXCLUDED.length){
-      html+='<div class="pa-warn-box" style="background:#F0F0F0;border-color:var(--bs)"><b>ℹ️ 자동 제외 '+PA_EXCLUDED.length+'건</b> (상권사업부·대성 협력사 — 우리 처리 대상 아님)<br>'+
-        PA_EXCLUDED.map(function(x){ return '<div class="pa-unresolved-row"><b>'+x.customer+'</b> <span style="color:var(--tm)">('+x.cat+')</span></div>'; }).join('')+'</div>';
+      var byReason={};
+      PA_EXCLUDED.forEach(function(x){ (byReason[x.reason]=byReason[x.reason]||[]).push(x); });
+      html+='<div class="pa-warn-box" style="background:#F0F0F0;border-color:var(--bs)"><b>ℹ️ 자동 제외 '+PA_EXCLUDED.length+'건</b><br>'+
+        Object.keys(byReason).map(function(reason){
+          var list=byReason[reason];
+          return '<div style="margin-top:6px"><b style="font-size:11.5px;color:var(--ts)">· '+reason+' ('+list.length+'건)</b>'+
+            list.map(function(x){ return '<div class="pa-unresolved-row" style="padding-left:10px"><b>'+x.customer+'</b> <span style="color:var(--tm)">('+x.cat+')</span></div>'; }).join('')+'</div>';
+        }).join('')+'</div>';
     }
     if(PA_MANUAL_ADJ.length){
       html+='<div class="pa-warn-box" style="background:var(--al);border-color:var(--ac)"><b>✏️ 수기 추가 '+PA_MANUAL_ADJ.length+'건</b><br>'+
