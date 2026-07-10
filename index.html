@@ -884,7 +884,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxnEyjCCV4o6Beg0hXBjoEH1Qrhi2In5MA3s4Tlow4WCj6o_ko12LSAjNd7KLwTMD87rg/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3522,7 +3522,8 @@ function loadMyPerf(){
 var PA_EMP=[]; // {id,name,team}
 var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[];
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
-var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_MANUAL_ADJ={};
+var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_EXCLUDED=[];
+var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭제 가능하도록 리스트로 관리)
 var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
@@ -3629,7 +3630,8 @@ var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무
 function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); return c; }
 
 function paAggregate(){
-  var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[];
+  var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[]; PA_EXCLUDED=[];
+  var excludedKeys={};
   function addCount(name,cat,customer,ts,content){
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cat]++;
@@ -3642,7 +3644,11 @@ function paAggregate(){
     var cat=paClassifyWiredProduct(r['상품명']);
     if(!cat) return;
     if(!paStatusQualifies(cat,r['개통상태'])) return;
-    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])) return;
+    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])){
+      var exKey=r['고객명']+'|'+cat;
+      if(!excludedKeys[exKey]){ excludedKeys[exKey]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:cat,reason:'상권사업부·대성 협력사'}); }
+      return;
+    }
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     var key=custKey+'|'+cat; (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명']}).rows.push(r);
   });
@@ -3654,7 +3660,11 @@ function paAggregate(){
   });
   var wirelessGroups={};
   PA_WIRELESS_ROWS.forEach(function(r){
-    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])) return;
+    if(paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력'])){
+      var exKey2=r['고객명']+'|무선';
+      if(!excludedKeys[exKey2]){ excludedKeys[exKey2]=true; PA_EXCLUDED.push({customer:r['고객명'],cat:'무선',reason:'상권사업부·대성 협력사'}); }
+      return;
+    }
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     (wirelessGroups[custKey]=wirelessGroups[custKey]||{rows:[],name:r['고객명']}).rows.push(r);
   });
@@ -3665,9 +3675,9 @@ function paAggregate(){
     else PA_UNRESOLVED.push({customer:g.name,cat:'무선',reason:'담당자 메모 없음/판별 불가',key:key});
   });
   // 수기로 추가된 건 반영
-  Object.keys(PA_MANUAL_ADJ).forEach(function(name){
-    if(!counts[name]) counts[name]=paEmptyCounts();
-    PA_CATS.forEach(function(cat){ counts[name][cat]+=(PA_MANUAL_ADJ[name][cat]||0); });
+  PA_MANUAL_ADJ.forEach(function(m){
+    if(!counts[m.name]) counts[m.name]=paEmptyCounts();
+    counts[m.name][m.cat]++;
   });
   return counts;
 }
@@ -3884,6 +3894,17 @@ function paRenderResult(){
             '<button type="button" class="btn btn-se btn-xs pa-unresolved-add" data-idx="'+i+'">+ 이 건 추가</button></div>';
         }).join('')+'</div>';
     }
+    if(PA_EXCLUDED.length){
+      html+='<div class="pa-warn-box" style="background:#F0F0F0;border-color:var(--bs)"><b>ℹ️ 자동 제외 '+PA_EXCLUDED.length+'건</b> (상권사업부·대성 협력사 — 우리 처리 대상 아님)<br>'+
+        PA_EXCLUDED.map(function(x){ return '<div class="pa-unresolved-row"><b>'+x.customer+'</b> <span style="color:var(--tm)">('+x.cat+')</span></div>'; }).join('')+'</div>';
+    }
+    if(PA_MANUAL_ADJ.length){
+      html+='<div class="pa-warn-box" style="background:var(--al);border-color:var(--ac)"><b>✏️ 수기 추가 '+PA_MANUAL_ADJ.length+'건</b><br>'+
+        PA_MANUAL_ADJ.map(function(m,i){
+          return '<div class="pa-unresolved-row"><b>'+m.name+'</b> · '+m.cat+' <span style="color:var(--tm)">('+(m.customer||'수기입력')+')</span> '+
+            '<button type="button" class="btn btn-dg btn-xs pa-manual-del" data-idx="'+i+'">삭제</button></div>';
+        }).join('')+'</div>';
+    }
     if(PA_UNMATCHED.length){
       var uniq=Array.from(new Set(PA_UNMATCHED));
       html+='<div class="pa-warn-box">⚠️ 직원목록에 없는 이름 '+uniq.length+'건: '+uniq.join(', ')+'</div>';
@@ -3896,9 +3917,14 @@ function paRenderResult(){
         var name=sel.value;
         if(!name){ alert('직원을 선택해주세요.'); return; }
         var item=PA_UNRESOLVED[idx];
-        if(!PA_MANUAL_ADJ[name]) PA_MANUAL_ADJ[name]=paEmptyCounts();
-        PA_MANUAL_ADJ[name][item.cat]++;
+        PA_MANUAL_ADJ.push({name:name,cat:item.cat,customer:item.customer});
         PA_UNRESOLVED.splice(idx,1);
+        paRenderResult();
+      });
+    });
+    warnBox.querySelectorAll('.pa-manual-del').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        PA_MANUAL_ADJ.splice(+btn.dataset.idx,1);
         paRenderResult();
       });
     });
@@ -3944,7 +3970,7 @@ function paPublish(){
 document.getElementById('pa-publish-btn') && document.getElementById('pa-publish-btn').addEventListener('click',paPublish);
 document.getElementById('pa-date') && document.getElementById('pa-date').addEventListener('change',function(){
   var date=this.value; if(!date) return;
-  PA_MANUAL_ADJ={};
+  PA_MANUAL_ADJ=[];
   paLoadAnnualsForDate(date,function(map){
     PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
     Object.keys(map).forEach(function(empId){ if(PA_ROWSTATE[empId]) PA_ROWSTATE[empId].leave=map[empId]; });
@@ -4054,7 +4080,7 @@ document.getElementById('acc-upload-file') && document.getElementById('acc-uploa
         };
       });
       document.getElementById('acc-upload-status').textContent='업로드 중... ('+rows.length+'건)';
-      api('bulkUpdateAccounts',{rows:rows}).then(function(res){
+      api('bulkUpdateAccounts',{rows:rows,skipBlanks:true}).then(function(res){
         if(!res.ok){ document.getElementById('acc-upload-status').textContent='❌ '+(res.error||'업로드 실패'); return; }
         var msg='✅ '+res.updated.length+'명 반영됨';
         if(res.unmatched.length) msg+=' · ⚠️ 매칭 안 된 이름: '+res.unmatched.join(', ');
@@ -4080,7 +4106,7 @@ document.getElementById('acc-save-all-btn') && document.getElementById('acc-save
   });
   var btn=document.getElementById('acc-save-all-btn');
   if(btn) btn.textContent='저장 중...';
-  api('bulkUpdateAccounts',{rows:rows}).then(function(res){
+  api('bulkUpdateAccounts',{rows:rows,skipBlanks:false}).then(function(res){
     if(btn) btn.textContent='💾 전체 저장';
     if(res.ok){ addLog('계정정보 전체 저장 ('+res.updated.length+'명)'); alert('✅ 저장되었습니다.'); loadAccounts(); }
     else alert(res.error||'저장 실패');
