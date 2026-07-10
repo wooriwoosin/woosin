@@ -232,6 +232,9 @@ table.pt td.otc{background:#FFF8F8;}
 .pa-c-fixdur{background:var(--wnl);color:var(--wn);padding:6px 8px;}
 .pa-fixdur-select{width:100%;border:none;background:transparent;color:var(--wn);font-weight:800;font-size:12px;text-align:center;cursor:pointer;}
 .pa-fixdur-select:focus{outline:none;}
+.pa-fixdur-multi{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;align-items:center;}
+.pa-fixdur-chip{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:var(--s);color:var(--tm);border:1.5px solid var(--b);cursor:pointer;transition:all .1s;}
+.pa-fixdur-chip.on{background:var(--wn);color:#fff;border-color:var(--wn);}
 .pa-evidence-box{background:#FFFBEA;border:1.5px solid var(--wn);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:12.5px;}
 .pa-evidence-row{padding:6px 0;border-top:1px dashed #E9DCB8;}
 .pa-evidence-row:first-of-type{border-top:none;}
@@ -493,6 +496,21 @@ table.pt td.otc{background:#FFF8F8;}
       <div id="emp-section-admin"></div>
       <div id="emp-section-staff"></div>
     </div>
+    <!-- 계정정보 (관리자 전용) -->
+    <div class="pg" id="pg-accounts">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="cttl">🔑 계정정보 관리</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="acc-upload-file" accept=".xlsx,.xls,.csv" style="font-size:12px">
+          <button class="btn btn-ok btn-sm" id="acc-save-all-btn">💾 전체 저장</button>
+        </div>
+      </div>
+      <div id="acc-upload-status" style="font-size:12.5px;color:var(--ts);margin-bottom:10px"></div>
+      <div class="hint" style="margin-bottom:10px">엑셀 업로드 형식: 이름, 직급, 코스아이디, 코스비밀번호, IDMS비밀번호, (서브)사용자명, 코스아이디, 코스비밀번호, IDMS비밀번호, (우신)사용자명, 코스아이디, 코스비밀번호, IDMS비밀번호, 업무카톡아이디, 카톡비밀번호 순서 — 이름으로 기존 직원과 매칭됩니다. 업로드 후에도 아래 표에서 직접 수정 가능하고, 내 정보/직원 관리와 100% 같은 데이터라 자동으로 같이 반영됩니다.</div>
+      <div style="overflow-x:auto">
+        <table class="pt" id="acc-table"></table>
+      </div>
+    </div>
     <!-- 직원 평가 -->
     <div class="pg" id="pg-eval">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -608,29 +626,6 @@ table.pt td.otc{background:#FFF8F8;}
         </div>
       </div>
       <div class="card" style="margin-top:0">
-        <div class="cttl" style="margin-bottom:4px">📊 환산점수 가중치 (관리자 전용)</div>
-        <p style="font-size:13px;color:var(--ts);margin-bottom:12px">전체 실적/대시보드/순위에 쓰이는 환산점수 계산 가중치입니다. 변경 시 즉시 전체 사용자에게 반영됩니다.</p>
-        <div id="weight-edit-body" class="m2"></div>
-        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
-          <button class="btn btn-pr btn-sm" id="weight-save-btn">저장</button>
-          <span id="weight-save-result" style="font-size:12px"></span>
-        </div>
-      </div>
-      <div class="card" style="margin-top:0">
-        <div class="cttl" style="margin-bottom:4px">🎯 환산점수 상한/보너스 설정 (관리자 전용)</div>
-        <p style="font-size:13px;color:var(--ts);margin-bottom:12px">시간대별 환산점수의 기본점수·상한·보너스입니다. 기타업무 체크 시 기본점수까지 채워지고, 정규업무+기타업무를 동시에 수행하면 멀티보너스가, 고정업무 항목 체크 시 고정업무보너스가 추가되며, 기타업무가 있는 시간대는 합계가 상한을 넘지 않습니다. (기타업무가 없으면 상한이 적용되지 않고 정규업무 환산점수 그대로 반영됩니다)</p>
-        <div class="m2">
-          <div class="fg"><label>기본점수 (기타업무 최소 보장)</label><input type="number" step="0.01" min="0" id="score-base-edit"></div>
-          <div class="fg"><label>시간대당 환산점수 상한</label><input type="number" step="0.01" min="0" id="score-max-edit"></div>
-          <div class="fg"><label>멀티 보너스 (정규업무+기타업무 동시수행)</label><input type="number" step="0.01" min="0" id="score-multi-edit"></div>
-          <div class="fg"><label>고정업무 보너스 (시간당)</label><input type="number" step="0.01" min="0" id="score-fixed-edit"></div>
-        </div>
-        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-          <button class="btn btn-pr btn-sm" id="score-bonus-save-btn">저장</button>
-          <span id="score-bonus-save-result" style="font-size:12px"></span>
-        </div>
-      </div>
-      <div class="card" style="margin-top:0">
         <div class="cttl" style="margin-bottom:4px">🔽 드롭박스 관리 (관리자 전용)</div>
         <p style="font-size:13px;color:var(--ts);margin-bottom:12px">실적입력의 '기타업무' 목록(항목별 고정업무/일반 구분 포함)과, 직원등록 시 사용하는 '팀' 목록을 관리합니다.</p>
         <div class="m2">
@@ -667,6 +662,7 @@ table.pt td.otc{background:#FFF8F8;}
     <select id="cpop-emp-sel" style="width:100%;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;font-size:13px;font-family:inherit;outline:none;background:var(--s)"></select>
   </div>
   <div id="cpop-types"></div>
+  <textarea id="cpop-memo" placeholder="메모 (선택, 예: 사유/비고)" style="width:100%;min-height:50px;margin-top:8px;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
   <div style="margin-top:10px;display:flex;gap:6px">
     <button class="btn btn-dg btn-xs" id="cpop-del" style="display:none">삭제</button>
     <button class="btn btn-se btn-xs" style="margin-left:auto" id="cpop-close">닫기</button>
@@ -714,15 +710,25 @@ table.pt td.otc{background:#FFF8F8;}
     </div>
     <div class="slbl">서브 코스</div>
     <div class="m2">
+      <div class="fg"><label>사용자명 <span style="font-size:11px;color:var(--tm)">(계정이 등록된 명의)</span></label><input type="text" id="mi-subUserName"></div>
       <div class="fg"><label>서브 코스 아이디</label><input type="text" id="mi-cid2"></div>
       <div class="fg"><label>서브 코스 비밀번호</label><input type="text" id="mi-cpw2"></div>
       <div class="fg"><label>서브 IDMS 비밀번호</label><input type="text" id="mi-idms2"></div>
     </div>
+    <div class="slbl">우신 코스</div>
+    <div class="m2">
+      <div class="fg"><label>사용자명 <span style="font-size:11px;color:var(--tm)">(계정이 등록된 명의)</span></label><input type="text" id="mi-wUserName"></div>
+      <div class="fg"><label>우신 코스 아이디</label><input type="text" id="mi-wcid"></div>
+      <div class="fg"><label>우신 코스 비밀번호</label><input type="text" id="mi-wcpw"></div>
+      <div class="fg"><label>우신 IDMS 비밀번호</label><input type="text" id="mi-widms"></div>
+    </div>
+    <div class="slbl">업무카톡 메신저</div>
+    <div class="m2">
+      <div class="fg"><label>업무카톡 아이디</label><input type="text" id="mi-katalkId"></div>
+      <div class="fg"><label>카톡 비밀번호</label><input type="text" id="mi-katalkPw"></div>
+    </div>
     <div class="slbl">기타 계정</div>
     <div class="m2">
-      <div class="fg"><label>업무폰</label><input type="text" id="mi-bph"></div>
-      <div class="fg"><label>도큐레이 아이디</label><input type="text" id="mi-doc"></div>
-      <div class="fg"><label>에스원 아이디</label><input type="text" id="mi-s1"></div>
       <div class="fg"><label>전산 PC 비밀번호 <span id="mi-pcpw-warn" style="display:none;color:var(--wn)">⚠️ 30일 이상 미변경</span></label><input type="password" id="mi-pcpw" placeholder="전산 PC 로그인 비밀번호"></div>
       <div class="fg"><label>내선번호 <span style="font-size:11px;color:var(--tm)">(4자리 숫자, 자리배치도에 표시됨)</span></label><input type="text" id="mi-ext" maxlength="4" placeholder="예: 1234"></div>
     </div>
@@ -872,7 +878,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzLfdZSNKGQGZOuHz828OnEsJmvXu43MpAxOmJn36MF-cXcF-w97aEGMfjc68cuefrQfQ/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -1251,6 +1257,7 @@ function showApp(){
       {id:'perfagg',l:'📈 실적집계',p:'pg-input'},
       {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
       {id:'emps',l:'👥 직원 관리',p:'pg-emps'},
+      {id:'accounts',l:'🔑 계정정보',p:'pg-accounts'},
       {id:'myinfo',l:'👤 내 정보',p:'pg-myinfo'},
       {id:'seats',l:'🗺️ 자리배치도&내선번호',p:'pg-seats'},
       {id:'ip',l:'🌐 IP 현황',p:'pg-ip'},
@@ -1259,7 +1266,7 @@ function showApp(){
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'allperf';
-      var validTabs=['allperf','perfagg','cal','emps','myinfo','seats','ip','settings'];
+      var validTabs=['allperf','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
     });
   } else {
@@ -1325,6 +1332,7 @@ function switchTab(id){
     if(!_loadedTabs.emps||now-_loadedTabs.emps>30000){ _loadedTabs.emps=now; loadEmps(); }
   }
   if(id==='seats') loadSeats();
+  if(id==='accounts') loadAccounts();
   if(id==='ip') loadIPs();
   if(id==='myinfo') loadMyInfo();
   if(id==='settings') loadSettingsTab();
@@ -1597,8 +1605,8 @@ function makeDayEl(ds,dayNum,other){
   cAn.filter(function(a){return a.date===ds;}).forEach(function(a){
     var t=ATYPES.find(function(x){return x.k===a.type;})||{c:'cc-an'};
     var nm=dispName(a.empId,a.empName);
-    var ch=document.createElement('div'); ch.className='cc '+t.c; ch.title=nm+' '+a.type;
-    ch.textContent=nm+' '+a.type; chips.appendChild(ch);
+    var ch=document.createElement('div'); ch.className='cc '+t.c; ch.title=nm+' '+a.type+(a.memo?' - '+a.memo:'');
+    ch.textContent=nm+' '+a.type+(a.memo?' 📝':''); chips.appendChild(ch);
   });
   cPf.filter(function(p){return p.date===ds&&p.attendStatus&&p.attendStatus.indexOf('야근')!==-1;}).forEach(function(p){
     var nm=dispName(p.empId,p.empName);
@@ -1675,7 +1683,7 @@ function refreshCPopState(date){
     var dayAnns=cAn.filter(function(a){return a.date===date;});
     if(dayAnns.length){
       tc.innerHTML='<div style="font-size:12px;color:var(--ts);line-height:1.8">'+
-        dayAnns.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+'<\/div>';}).join('')+'<\/div>';
+        dayAnns.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+(a.memo?' <span style="color:var(--tm)">('+a.memo+')</span>':'')+'</div>';}).join('')+'</div>';
     } else {
       tc.innerHTML='<div style="font-size:12px;color:var(--tm)">등록된 연차가 없습니다.<\/div>';
     }
@@ -1688,6 +1696,7 @@ function refreshCPopState(date){
     var myExist=cAn.find(function(a){return a.empId===CU.id&&a.date===date;});
     var others=cAn.filter(function(a){return a.date===date&&a.empId!==CU.id;});
     document.getElementById('cpop-del').style.display=myExist?'inline-flex':'none';
+    document.getElementById('cpop-memo').value=myExist?(myExist.memo||''):'';
     if(others.length){
       tc.innerHTML='<div style="font-size:12px;color:var(--ts);margin-bottom:8px;line-height:1.8">'+
         others.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+'<\/div>';}).join('')+'<\/div>';
@@ -1704,6 +1713,7 @@ function refreshCPopState(date){
   document.getElementById('cpop-lbl').textContent=date+' - '+targetName;
   var exist=cAn.find(function(a){return a.empId===targetId&&a.date===date;});
   document.getElementById('cpop-del').style.display=exist?'inline-flex':'none';
+  document.getElementById('cpop-memo').value=exist?(exist.memo||''):'';
   ATYPES.filter(function(t){return !t.weekendOnly||isWeekend(date);}).forEach(function(t){
     var btn=document.createElement('button');
     btn.className='at-btn'+(exist&&exist.type===t.k?' sel':'');
@@ -1727,11 +1737,12 @@ function saveAnnual(type){
   if(!popDate){alert('날짜를 다시 선택해주세요.');return;}
   var t=getPopTarget();
   if(!t.id){alert('직원을 선택해주세요.');return;}
-  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:type}}).then(function(res){
+  var memoVal=(document.getElementById('cpop-memo').value||'').trim();
+  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:type,memo:memoVal}}).then(function(res){
     if(res.ok){
       // cAn 즉시 업데이트
       cAn=cAn.filter(function(a){return !(a.empId===t.id&&a.date===popDate);});
-      cAn.push({empId:t.id,empName:t.name,date:popDate,type:type});
+      cAn.push({empId:t.id,empName:t.name,date:popDate,type:type,memo:memoVal});
       closeCPop();renderCal();loadCal();
     }else alert(res.error||'저장 실패');
   });
@@ -1740,7 +1751,7 @@ function deleteAnnual(){
   if(!confirm('연차를 삭제하시겠습니까?')) return;
   if(!popDate) return;
   var t=getPopTarget();
-  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:''}}).then(function(res){
+  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:'',memo:''}}).then(function(res){
     if(res.ok){
       cAn=cAn.filter(function(a){return !(a.empId===t.id&&a.date===popDate);});
       closeCPop();renderCal();loadCal();
@@ -1809,14 +1820,16 @@ function loadMyInfo(){
     el.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">📋 기본 정보 (관리자 등록)<\/div>'+
-      ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+ir('내선번호',u.ext||'미등록')+
-      ir('목표실적(일별 환산점수)',getCurrentTarget(u.id)!=null?getCurrentTarget(u.id)+'pt':'미지정')+'<\/div>'+
+      ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+ir('내선번호',u.ext||'미등록')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 메인 코스<\/div>'+
       ir('코스 아이디',u.cid1||'-')+irpw('코스 비밀번호',u.cpw1,'cpw1')+irpw('IDMS 비밀번호',u.idms1,'idms1')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 서브 코스<\/div>'+
-      ir('서브 코스 아이디',u.cid2||'-')+irpw('서브 코스 비번',u.cpw2,'cpw2')+irpw('서브 IDMS 비번',u.idms2,'idms2')+'<\/div>'+
+      ir('사용자명',u.subUserName||'-')+ir('서브 코스 아이디',u.cid2||'-')+irpw('서브 코스 비번',u.cpw2,'cpw2')+irpw('서브 IDMS 비번',u.idms2,'idms2')+'<\/div>'+
+      '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 우신 코스<\/div>'+
+      ir('사용자명',u.wUserName||'-')+ir('우신 코스 아이디',u.wcid||'-')+irpw('우신 코스 비번',u.wcpw,'wcpw')+irpw('우신 IDMS 비번',u.widms,'widms')+'<\/div>'+
+      '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">💬 업무카톡 메신저<\/div>'+
+      ir('업무카톡 아이디',u.katalkId||'-')+irpw('카톡 비밀번호',u.katalkPw,'katalkPw')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">📱 기타 계정<\/div>'+
-      ir('업무폰',u.bph||'-')+ir('도큐레이 아이디',u.doc||'-')+ir('에스원 아이디',u.s1||'-')+
       '<div class="irow"><span class="ilbl">전산 PC 비번'+pcWarn+'<\/span>'+
         (u.pcpw?'<span class="ival tpw" id="pw-pcpw">●●●●●●●●<\/span><span class="tpw-v" onclick="tpwDisp(\'pcpw\',\''+encodeURIComponent(u.pcpw||'')+'\')">👁<\/span>':
         '<span class="ival" style="color:var(--tm)">미등록<\/span>')+
@@ -1851,10 +1864,7 @@ function tpwDisp(id,encVal){
 }
 function openMyInfoEdit(){
   var u=CU;
-  ['cid1','cpw1','idms1','cid2','cpw2','idms2'].forEach(function(k){document.getElementById('mi-'+k).value=u[k]||'';});
-  document.getElementById('mi-bph').value=u.bph||'';
-  document.getElementById('mi-doc').value=u.doc||'';
-  document.getElementById('mi-s1').value=u.s1||'';
+  ['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw'].forEach(function(k){document.getElementById('mi-'+k).value=u[k]||'';});
   document.getElementById('mi-pcpw').value=u.pcpw||'';
   document.getElementById('mi-ext').value=u.ext||'';
   // 30일 경고
@@ -1869,10 +1879,7 @@ function openMyInfoEdit(){
 }
 function saveMyInfo(){
   var fields={};
-  ['cid1','cpw1','idms1','cid2','cpw2','idms2'].forEach(function(k){fields[k]=document.getElementById('mi-'+k).value.trim();});
-  fields.bph=document.getElementById('mi-bph').value.trim();
-  fields.doc=document.getElementById('mi-doc').value.trim();
-  fields.s1=document.getElementById('mi-s1').value.trim();
+  ['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw'].forEach(function(k){fields[k]=document.getElementById('mi-'+k).value.trim();});
   var extVal=document.getElementById('mi-ext').value.trim();
   if(extVal && !/^\d{4}$/.test(extVal)){ alert('내선번호는 숫자 4자리로 입력해주세요.'); return; }
   fields.ext=extVal;
@@ -2925,24 +2932,31 @@ function openEmpD(id){
       '<\/label><\/div>'+
       '<div class="slbl">보유 스킬 (관리자 전용 · 온오프)<\/div>'+
       buildSkillTogglesHtml(u.skills||{})+
-      '<div class="slbl">본인 등록 계정 (읽기 전용)<\/div>'+
-      '<div style="background:var(--bg);border-radius:8px;padding:12px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
-      ir('코스 아이디',u.cid1||'-')+ir('서브 코스 아이디',u.cid2||'-')+
-      ir('업무폰',u.bph||'-')+ir('도큐레이',u.doc||'-')+ir('에스원',u.s1||'-')+
+      '<div class="slbl">계정 정보 (관리자 수정 가능)<\/div>'+
+      '<div class="m2">'+
+      '<div class="fg"><label>코스 아이디<\/label><input type="text" id="ed-cid1" value="'+(u.cid1||'')+'"><\/div>'+
+      '<div class="fg"><label>코스 비밀번호<\/label><input type="text" id="ed-cpw1" value="'+(u.cpw1||'')+'"><\/div>'+
+      '<div class="fg"><label>IDMS 비밀번호<\/label><input type="text" id="ed-idms1" value="'+(u.idms1||'')+'"><\/div>'+
+      '<div class="fg"><label>서브 사용자명<\/label><input type="text" id="ed-subUserName" value="'+(u.subUserName||'')+'"><\/div>'+
+      '<div class="fg"><label>서브 코스 아이디<\/label><input type="text" id="ed-cid2" value="'+(u.cid2||'')+'"><\/div>'+
+      '<div class="fg"><label>서브 코스 비밀번호<\/label><input type="text" id="ed-cpw2" value="'+(u.cpw2||'')+'"><\/div>'+
+      '<div class="fg"><label>서브 IDMS 비밀번호<\/label><input type="text" id="ed-idms2" value="'+(u.idms2||'')+'"><\/div>'+
+      '<div class="fg"><label>우신 사용자명<\/label><input type="text" id="ed-wUserName" value="'+(u.wUserName||'')+'"><\/div>'+
+      '<div class="fg"><label>우신 코스 아이디<\/label><input type="text" id="ed-wcid" value="'+(u.wcid||'')+'"><\/div>'+
+      '<div class="fg"><label>우신 코스 비밀번호<\/label><input type="text" id="ed-wcpw" value="'+(u.wcpw||'')+'"><\/div>'+
+      '<div class="fg"><label>우신 IDMS 비밀번호<\/label><input type="text" id="ed-widms" value="'+(u.widms||'')+'"><\/div>'+
+      '<div class="fg"><label>업무카톡 아이디<\/label><input type="text" id="ed-katalkId" value="'+(u.katalkId||'')+'"><\/div>'+
+      '<div class="fg"><label>카톡 비밀번호<\/label><input type="text" id="ed-katalkPw" value="'+(u.katalkPw||'')+'"><\/div>'+
+      '<\/div>'+
       (function(){
         var pcWarnTxt='';
         if(u.pcpwDate){
           var diff=Math.floor((new Date()-new Date(u.pcpwDate))/(1000*60*60*24));
           if(diff>=30) pcWarnTxt=' <span style="color:var(--wn)">⚠️ '+diff+'일째 미변경<\/span>';
         } else { pcWarnTxt=' <span style="color:var(--wn)">⚠️ 미등록<\/span>'; }
-        var pcLabel='전산 PC 비번'+pcWarnTxt;
         var pcVal=u.pcpw?'<span class="tpw" id="pw-empd-pcpw">●'.repeat(Math.min((u.pcpw||'').length,8))+'<\/span><span class="tpw-v" onclick="tpwDisp(\'empd-pcpw\',\''+encodeURIComponent(u.pcpw||'')+'\')">👁<\/span>':'<span style="color:var(--tm)">미등록<\/span>';
-        return '<div class="irow"><span class="ilbl">'+pcLabel+'<\/span><span class="ival">'+pcVal+'<\/span><\/div>';
-      }())+
-      '<\/div>'+
-      '<div class="slbl">개인 직원별 목표실적 (환산점수 기준 · 관리자 전용)<\/div>'+
-      '<p style="font-size:11px;color:var(--tm);margin-bottom:8px">일일 달성률(건수) 목표와는 별개로, 이 직원의 일별 환산점수(pt) 목표를 지정합니다. 비워두면 미지정 상태로 남습니다.<\/p>'+
-      '<div class="fg" style="margin-bottom:0"><label>일별 목표 환산점수(pt) · 오늘부터 적용<\/label><input type="number" min="0" step="0.1" id="ed-score-target" value="'+(getCurrentTarget(u.id)!=null?getCurrentTarget(u.id):'')+'"><\/div>';
+        return '<div style="background:var(--bg);border-radius:8px;padding:12px;font-size:12px"><div class="irow"><span class="ilbl">전산 PC 비번'+pcWarnTxt+'<\/span><span class="ival">'+pcVal+'<\/span><\/div><\/div>';
+      }());
     var retireBtn=document.getElementById('empd-retire');
     if(retireBtn){
       if(u.retired){
@@ -2992,28 +3006,19 @@ function saveEmpFromModal(){
     skills:skills,
     role:isAdmin?'admin':'employee'
   };
+  ['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw'].forEach(function(k){
+    var el=document.getElementById('ed-'+k);
+    if(el) fields[k]=el.value.trim();
+  });
   var pw=document.getElementById('ed-pw').value;
   if(pw) fields.pw=pw;
-  var scoreTargetEl=document.getElementById('ed-score-target');
-  var scoreTargetVal=scoreTargetEl?scoreTargetEl.value.trim():'';
   api('updateEmpAdmin',{id:_editEmpId,fields:fields}).then(function(res){
     if(!res.ok){alert(res.error||'저장 실패');return;}
     var desc=fields.name+' 정보 수정';
     if(pw) desc+=' (비밀번호 변경)';
     addLog(desc);
-    var newMap={};
-    Object.keys(EMP_SCORE_TARGETS).forEach(function(k){newMap[k]=EMP_SCORE_TARGETS[k].slice();});
-    var today=new Date().toISOString().slice(0,10);
-    var newVal=(scoreTargetVal&&!isNaN(Number(scoreTargetVal)))?Number(scoreTargetVal):null;
-    var curVal=getTargetOnDate(_editEmpId,today);
-    if(newVal!==curVal){
-      newMap[_editEmpId]=pushTargetChange(newMap[_editEmpId],today,newVal);
-    }
-    api('saveSettings',{EMP_SCORE_TARGETS:newMap}).then(function(){
-      EMP_SCORE_TARGETS=newMap;
-      closeM('m-empd');
-      refreshEmpNameMap(function(){_loadedTabs.emps=0;_loadedTabs.eval=0;loadEmps();});
-    });
+    closeM('m-empd');
+    refreshEmpNameMap(function(){_loadedTabs.emps=0;_loadedTabs.eval=0;loadEmps();});
   });
 }
 function retireEmpFromModal(){
@@ -3514,7 +3519,7 @@ function loadMyPerf(){
 // ══════════════════════════════════════════════
 var PA_EMP=[]; // {id,name,team}
 var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[];
-var PA_ROWSTATE={}; // empId -> {leave,fixdurName,voc}
+var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
 var PA_EVIDENCE={}; var PA_UNMATCHED=[];
 var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
@@ -3522,7 +3527,6 @@ var PA_LEAVE_OPTS=[
   {v:'오전반반차',l:'오전반반차',hours:2},{v:'오후반반차',l:'오후반반차',hours:2},
   {v:'휴일근무',l:'휴일근무',hours:0}
 ];
-var PA_CHEONAN_STAFF=['이아름','박윤화']; // 정해진 양식 없이 처리하는 특례 대상자 (필요시 이 목록만 수정)
 
 // 통화시간(H:MM:SS) 파싱 - 엑셀/시트가 시간값을 Date객체, 일련번호(소수), 또는
 // "1899-12-30 00:01:15" 같은 날짜접두 문자열로 돌려주는 경우까지 전부 안전하게 처리
@@ -3581,21 +3585,17 @@ function paPickBestEntry(entries){
   var pool=(substantial.length?substantial:entries).slice().sort(function(a,b){return b.ts.localeCompare(a.ts);});
   return pool[0];
 }
+// 담당자 판별: 로그 타입을 특정 이름(고객메모/회신요청 등)으로 제한하면 회신완료·상부요청·상부답변·관리메모 등
+// 실제로 쓰이는 다른 표현을 놓치는 문제가 있어서, 타입 제한 없이 "내부직원이 남긴 로그"면 전부 후보로 인정하고
+// 그 중 실질내용(15자 이상) 우선 → 최신순으로 선택한다. (개통/접수 완료 여부는 상태 컬럼에서 이미 확정되므로
+// 여기서는 순수하게 "누가 처리했는지"만 판별하면 됨)
 function paFindWiredStaff(history){
-  var entries=paExtractEntries(history).filter(function(e){return e.type==='고객메모'&&paIsInternalName(e.name);});
+  var entries=paExtractEntries(history).filter(function(e){return paIsInternalName(e.name);});
   var best=paPickBestEntry(entries);
   return best?{name:best.name,ts:best.ts,content:best.content}:null;
 }
 function paFindWirelessStaff(history){
-  var entries=paExtractEntries(history).filter(function(e){
-    return e.type==='회신요청'&&paIsInternalName(e.name)&&
-      (e.content.indexOf('개통완료')!==-1||e.content.indexOf('유심인식')!==-1||e.content.indexOf('유심 개통')!==-1);
-  });
-  var best=paPickBestEntry(entries);
-  return best?{name:best.name,ts:best.ts,content:best.content}:null;
-}
-function paFindCheonanStaff(history){
-  var entries=paExtractEntries(history).filter(function(e){return PA_CHEONAN_STAFF.indexOf(e.name)!==-1;});
+  var entries=paExtractEntries(history).filter(function(e){return paIsInternalName(e.name);});
   var best=paPickBestEntry(entries);
   return best?{name:best.name,ts:best.ts,content:best.content}:null;
 }
@@ -3613,7 +3613,6 @@ function paStatusQualifies(category,status,history){
   if(status.indexOf('취소')!==-1||status.indexOf('해지')!==-1){ return (history||'').indexOf('접수완료')!==-1||(history||'').indexOf('개통완료')!==-1; }
   return false;
 }
-function paIsSkipTeam(coop){ return (coop||'').indexOf('시흥영업팀')!==-1||(coop||'').indexOf('천안영업팀')!==-1; }
 
 function paAggregate(){
   var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={};
@@ -3644,8 +3643,7 @@ function paAggregate(){
   Object.keys(wirelessGroups).forEach(function(key){
     var rows=wirelessGroups[key], best=null;
     rows.forEach(function(r){
-      var isCheonan=paIsSkipTeam(r['협력점']);
-      var f=isCheonan?paFindCheonanStaff(r['고객이력']):paFindWirelessStaff(r['고객이력']);
+      var f=paFindWirelessStaff(r['고객이력']);
       if(f&&(!best||f.ts>best.ts)) best=f;
     });
     if(best) addCount(best.name,'무선',key,best.ts,best.content);
@@ -3705,7 +3703,7 @@ function loadPerfAgg(){
   if(dateEl && !dateEl.value) dateEl.value=new Date().toISOString().slice(0,10);
   paRenderFixdurList();
   paLoadEmployees(function(){
-    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurName:'',voc:0}; });
+    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
     paLoadAnnualsForDate(dateEl.value,function(map){
       Object.keys(map).forEach(function(empId){ if(PA_ROWSTATE[empId]) PA_ROWSTATE[empId].leave=map[empId]; });
       paRenderResult();
@@ -3778,7 +3776,7 @@ document.getElementById('pa-load-btn') && document.getElementById('pa-load-btn')
     r.rows.forEach(function(row){
       var emp=PA_EMP.find(function(e){return e.id===row.empId;});
       if(!emp) return;
-      PA_ROWSTATE[row.empId]={leave:row.연차유형||'',fixdurName:row.고정업무||'',voc:Number(row.VOC||0)};
+      PA_ROWSTATE[row.empId]={leave:row.연차유형||'',fixdurNames:row.고정업무?String(row.고정업무).split(',').map(function(s){return s.trim();}).filter(Boolean):[],voc:Number(row.VOC||0)};
     });
     document.getElementById('pa-calc-status').textContent='✅ '+date+' 기존 게시분 '+r.rows.length+'건 불러옴 (로우데이터는 다시 업로드해야 접수건수가 채워집니다)';
     paRenderResult();
@@ -3801,22 +3799,23 @@ function paRenderResult(){
 
   wrap.innerHTML=Object.keys(teams).map(function(team){
     var cards=teams[team].map(function(e){
-      var st=PA_ROWSTATE[e.id]||(PA_ROWSTATE[e.id]={leave:'',fixdurName:'',voc:0});
+      var st=PA_ROWSTATE[e.id]||(PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0});
       var c=counts[e.name]||{신규접수:0,약정갱신:0,유선기타:0,무선:0};
 
       var leaveSelect='<select class="pa-pill-select" data-emp="'+e.id+'" data-role="leave">'+
         PA_LEAVE_OPTS.map(function(o){return '<option value="'+o.v+'"'+(o.v===st.leave?' selected':'')+'>'+(o.l==='-'?'연차 없음':o.l)+'</option>';}).join('')+'</select>';
 
-      var fixOpts='<option value="">고정업무 없음</option>'+
-        PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
-          return '<option value="'+fd.name.replace(/"/g,'&quot;')+'"'+(st.fixdurName===fd.name?' selected':'')+'>🔧 '+fd.name+' ('+fd.hours+'h)</option>';
-        }).join('');
-      var fixPill='<div class="pa-cnt-pill pa-c-fixdur"><select class="pa-fixdur-select" data-emp="'+e.id+'" data-role="fixdur">'+fixOpts+'</select></div>';
+      var fixNames=st.fixdurNames||[];
+      var fixChips=PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
+        var on=fixNames.indexOf(fd.name)!==-1;
+        return '<span class="pa-fixdur-chip'+(on?' on':'')+'" data-emp="'+e.id+'" data-fdname="'+fd.name.replace(/"/g,'&quot;')+'">🔧 '+fd.name+'</span>';
+      }).join('');
+      var fixPill='<div class="pa-cnt-pill pa-c-fixdur pa-fixdur-multi">'+(fixChips||'<span style="font-size:10px;color:var(--tm)">등록된 고정업무 없음</span>')+'</div>';
 
-      var isVocDuty=(st.fixdurName||'').toUpperCase().indexOf('VOC')!==-1;
+      var isVocDuty=fixNames.some(function(n){return n.toUpperCase().indexOf('VOC')!==-1;});
       var vocControl=isVocDuty
         ? '<span class="pa-voc-wrap"><input type="number" min="0" data-emp="'+e.id+'" data-role="voc" value="'+(st.voc||0)+'"> VOC</span>'
-        : '<span class="pa-voc-wrap pa-voc-disabled" title="고정업무가 VOC인 경우만 입력 가능">- VOC</span>';
+        : '<span class="pa-voc-wrap pa-voc-disabled" title="고정업무에 VOC가 포함된 경우만 입력 가능">- VOC</span>';
 
       var phoneStat=paGetPhoneStat(e.name);
       var callPills=phoneStat?
@@ -3838,8 +3837,15 @@ function paRenderResult(){
   wrap.querySelectorAll('select[data-role="leave"]').forEach(function(sel){
     sel.addEventListener('change',function(){ PA_ROWSTATE[sel.dataset.emp].leave=sel.value; });
   });
-  wrap.querySelectorAll('select[data-role="fixdur"]').forEach(function(sel){
-    sel.addEventListener('change',function(){ PA_ROWSTATE[sel.dataset.emp].fixdurName=sel.value; paRenderResult(); });
+  wrap.querySelectorAll('.pa-fixdur-chip').forEach(function(chip){
+    chip.addEventListener('click',function(){
+      var st=PA_ROWSTATE[chip.dataset.emp];
+      if(!st.fixdurNames) st.fixdurNames=[];
+      var nm=chip.dataset.fdname;
+      var i=st.fixdurNames.indexOf(nm);
+      if(i===-1) st.fixdurNames.push(nm); else st.fixdurNames.splice(i,1);
+      paRenderResult();
+    });
   });
   wrap.querySelectorAll('input[data-role="voc"]').forEach(function(inp){
     inp.addEventListener('input',function(){ PA_ROWSTATE[inp.dataset.emp].voc=Number(inp.value||0); });
@@ -3871,7 +3877,7 @@ function paPublish(){
   if(!confirm(date+' 실적을 게시하시겠습니까?\n같은 날짜에 이미 게시된 내용이 있으면 덮어씁니다.')) return;
   var counts=paAggregate();
   var rows=PA_EMP.map(function(e){
-    var st=PA_ROWSTATE[e.id]||{leave:'',fixdurName:'',voc:0};
+    var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
     var c=counts[e.name]||{신규접수:0,약정갱신:0,유선기타:0,무선:0};
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
     return {
@@ -3879,7 +3885,7 @@ function paPublish(){
       신규접수:c.신규접수, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 무선:c.무선,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
       땡김콜:ph.P_CONN, 땡김시간:paS2hms(ph.P_TIME),
-      고정업무:st.fixdurName||'', 연차유형:st.leave||'', VOC:st.voc||0
+      고정업무:(st.fixdurNames||[]).join(', '), 연차유형:st.leave||'', VOC:st.voc||0
     };
   });
   var btn=document.getElementById('pa-publish-btn');
@@ -3894,7 +3900,7 @@ document.getElementById('pa-publish-btn') && document.getElementById('pa-publish
 document.getElementById('pa-date') && document.getElementById('pa-date').addEventListener('change',function(){
   var date=this.value; if(!date) return;
   paLoadAnnualsForDate(date,function(map){
-    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurName:'',voc:0}; });
+    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
     Object.keys(map).forEach(function(empId){ if(PA_ROWSTATE[empId]) PA_ROWSTATE[empId].leave=map[empId]; });
     paRenderResult();
   });
@@ -3903,7 +3909,18 @@ document.getElementById('pa-date') && document.getElementById('pa-date').addEven
 // ── 전체실적 (읽기전용, 로그인 기본화면) ──
 function loadAllPerfNew(){
   var dateEl=document.getElementById('ap-date');
-  if(dateEl && !dateEl.value) dateEl.value=new Date().toISOString().slice(0,10);
+  if(dateEl && !dateEl.value){
+    // 최초 로드 시: 오늘 데이터가 아직 없을 수 있으니(다음날 오전 입력) 게시된 가장 최근 날짜로 진입
+    api('getLatestPerfDate',{}).then(function(r){
+      dateEl.value=(r.ok&&r.date)?r.date:new Date().toISOString().slice(0,10);
+      loadAllPerfNewRender();
+    });
+    return;
+  }
+  loadAllPerfNewRender();
+}
+function loadAllPerfNewRender(){
+  var dateEl=document.getElementById('ap-date');
   var date=dateEl?dateEl.value:new Date().toISOString().slice(0,10);
   var body=document.getElementById('allperf-body');
   var statusEl=document.getElementById('ap-status');
@@ -3939,6 +3956,90 @@ function loadAllPerfNew(){
     if(statusEl) statusEl.textContent=date+' 게시 데이터 '+(perfRes.ok?perfRes.rows.length:0)+'명분';
   });
 }
+
+// ══════════════════════════════════════════════
+// 계정정보 관리 (관리자 전용)
+// ══════════════════════════════════════════════
+var ACC_FIELDS=['cid1','cpw1','idms1','subUserName','cid2','cpw2','idms2','wUserName','wcid','wcpw','widms','katalkId','katalkPw'];
+var ACC_EMP=[];
+function loadAccounts(){
+  var tbl=document.getElementById('acc-table');
+  if(tbl) tbl.innerHTML='<tr><td style="padding:20px;color:var(--tm)">불러오는 중...</td></tr>';
+  api('getAllUsers',{}).then(function(r){
+    if(!r.ok) return;
+    ACC_EMP=r.employees.filter(function(u){return !u.retired;});
+    renderAccTable();
+  });
+}
+function renderAccTable(){
+  var tbl=document.getElementById('acc-table');
+  if(!tbl) return;
+  var head='<tr><th rowspan="2">이름</th><th colspan="3">메인 코스</th><th colspan="4">서브 코스</th><th colspan="4">우신 코스</th><th colspan="2">업무카톡</th></tr>'+
+    '<tr><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
+    '<th>사용자명</th><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
+    '<th>사용자명</th><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
+    '<th>아이디</th><th>비밀번호</th></tr>';
+  var body=ACC_EMP.map(function(e){
+    return '<tr><td style="font-weight:700;white-space:nowrap">'+e.name+'</td>'+
+      ACC_FIELDS.map(function(f){
+        return '<td><input type="text" data-emp="'+e.id+'" data-f="'+f+'" value="'+(e[f]||'').toString().replace(/"/g,'&quot;')+'" style="width:100px;padding:4px 6px;border:1.5px solid var(--b);border-radius:5px;font-size:11.5px"></td>';
+      }).join('')+
+    '</tr>';
+  }).join('');
+  tbl.innerHTML=head+body;
+}
+document.getElementById('acc-upload-file') && document.getElementById('acc-upload-file').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var data=new Uint8Array(ev.target.result);
+      var wb=XLSX.read(data,{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var arr=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      // 1행: 그룹 병합헤더, 2행: 실제 컬럼명 - 실제 데이터는 3행부터, 컬럼순서는 고정
+      var rows=arr.slice(2).filter(function(r){return r[0];}).map(function(r){
+        return {
+          name:String(r[0]||'').trim(),
+          cid1:r[2]||'', cpw1:r[3]||'', idms1:r[4]||'',
+          subUserName:r[5]||'', cid2:r[6]||'', cpw2:r[7]||'', idms2:r[8]||'',
+          wUserName:r[9]||'', wcid:r[10]||'', wcpw:r[11]||'', widms:r[12]||'',
+          katalkId:r[13]||'', katalkPw:r[14]||''
+        };
+      });
+      document.getElementById('acc-upload-status').textContent='업로드 중... ('+rows.length+'건)';
+      api('bulkUpdateAccounts',{rows:rows}).then(function(res){
+        if(!res.ok){ document.getElementById('acc-upload-status').textContent='❌ '+(res.error||'업로드 실패'); return; }
+        var msg='✅ '+res.updated.length+'명 반영됨';
+        if(res.unmatched.length) msg+=' · ⚠️ 매칭 안 된 이름: '+res.unmatched.join(', ');
+        document.getElementById('acc-upload-status').textContent=msg;
+        addLog('계정정보 엑셀 일괄업로드 ('+res.updated.length+'명)');
+        loadAccounts();
+      });
+    }catch(err){ document.getElementById('acc-upload-status').textContent='❌ 읽기 실패: '+err.message; }
+  };
+  reader.readAsArrayBuffer(f);
+});
+document.getElementById('acc-save-all-btn') && document.getElementById('acc-save-all-btn').addEventListener('click',function(){
+  var rowsMap={};
+  document.querySelectorAll('#acc-table input[data-emp]').forEach(function(inp){
+    var id=inp.dataset.emp;
+    if(!rowsMap[id]) rowsMap[id]={name:'',id:id};
+    rowsMap[id][inp.dataset.f]=inp.value.trim();
+  });
+  // name은 매칭용 - ACC_EMP에서 채움
+  var rows=Object.keys(rowsMap).map(function(id){
+    var emp=ACC_EMP.find(function(x){return x.id===id;});
+    var r=rowsMap[id]; r.name=emp?emp.name:''; return r;
+  });
+  var btn=document.getElementById('acc-save-all-btn');
+  if(btn) btn.textContent='저장 중...';
+  api('bulkUpdateAccounts',{rows:rows}).then(function(res){
+    if(btn) btn.textContent='💾 전체 저장';
+    if(res.ok){ addLog('계정정보 전체 저장 ('+res.updated.length+'명)'); alert('✅ 저장되었습니다.'); loadAccounts(); }
+    else alert(res.error||'저장 실패');
+  });
+});
 </script>
 </body>
 </html>
