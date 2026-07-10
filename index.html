@@ -176,6 +176,7 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-hhpm{background:#EEEDFE;color:#3C3489;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
 .cc-hw{background:#E8ECF7;color:#2A3A7A;}
+.cc-gg{background:#E6F4EA;color:#1B6B3A;}
 .cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;}
 .cpop.open{display:block;}
 .cpop h4{font-size:13px;font-weight:600;margin-bottom:10px;}
@@ -368,6 +369,7 @@ table.pt td.otc{background:#FFF8F8;}
           <span class="cc cc-hham" style="display:inline-block">오전반반차</span>
           <span class="cc cc-hhpm" style="display:inline-block">오후반반차</span>
           <span class="cc cc-hw" style="display:inline-block">휴일근무 (토/일)</span>
+          <span class="cc cc-gg" style="display:inline-block">공가(예비군)</span>
           <span class="cc cc-ot" style="display:inline-block">야근</span>
           <span style="font-size:12px;color:var(--tm);margin-left:4px" id="cal-hint">※ 날짜 클릭 → 본인 연차 등록</span>
         </div>
@@ -662,7 +664,6 @@ table.pt td.otc{background:#FFF8F8;}
     <select id="cpop-emp-sel" style="width:100%;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;font-size:13px;font-family:inherit;outline:none;background:var(--s)"></select>
   </div>
   <div id="cpop-types"></div>
-  <textarea id="cpop-memo" placeholder="메모 (선택, 예: 사유/비고)" style="width:100%;min-height:50px;margin-top:8px;padding:6px 8px;border:1.5px solid var(--b);border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
   <div style="margin-top:10px;display:flex;gap:6px">
     <button class="btn btn-dg btn-xs" id="cpop-del" style="display:none">삭제</button>
     <button class="btn btn-se btn-xs" style="margin-left:auto" id="cpop-close">닫기</button>
@@ -816,7 +817,8 @@ var ATYPES=[
   {k:'오후반차',l:'오후반차',c:'cc-hpm'},
   {k:'오전반반차',l:'오전반반차',c:'cc-hham'},
   {k:'오후반반차',l:'오후반반차',c:'cc-hhpm'},
-  {k:'휴일근무',l:'휴일근무',c:'cc-hw',weekendOnly:true}
+  {k:'휴일근무',l:'휴일근무',c:'cc-hw',weekendOnly:true},
+  {k:'공가(예비군)',l:'공가(예비군)',c:'cc-gg'}
 ];
 var W={인티추티:1,무선:1,전화단독:1/3,약갱:1/3,선약:1/5,기가아이즈:2/3,상품권:4/15};
 // ── 시간대별 환산점수 상한/보너스 (관리자가 '설정' 탭에서 수정 가능) ──
@@ -878,7 +880,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbwbNYcLJ91R8CxRcSypmlpSQvvIpHDJAxmv41doW1ugphkXs2z4AsriDZbgp1BhJNGHcg/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -1605,8 +1607,8 @@ function makeDayEl(ds,dayNum,other){
   cAn.filter(function(a){return a.date===ds;}).forEach(function(a){
     var t=ATYPES.find(function(x){return x.k===a.type;})||{c:'cc-an'};
     var nm=dispName(a.empId,a.empName);
-    var ch=document.createElement('div'); ch.className='cc '+t.c; ch.title=nm+' '+a.type+(a.memo?' - '+a.memo:'');
-    ch.textContent=nm+' '+a.type+(a.memo?' 📝':''); chips.appendChild(ch);
+    var ch=document.createElement('div'); ch.className='cc '+t.c; ch.title=nm+' '+a.type;
+    ch.textContent=nm+' '+a.type; chips.appendChild(ch);
   });
   cPf.filter(function(p){return p.date===ds&&p.attendStatus&&p.attendStatus.indexOf('야근')!==-1;}).forEach(function(p){
     var nm=dispName(p.empId,p.empName);
@@ -1683,7 +1685,7 @@ function refreshCPopState(date){
     var dayAnns=cAn.filter(function(a){return a.date===date;});
     if(dayAnns.length){
       tc.innerHTML='<div style="font-size:12px;color:var(--ts);line-height:1.8">'+
-        dayAnns.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+(a.memo?' <span style="color:var(--tm)">('+a.memo+')</span>':'')+'</div>';}).join('')+'</div>';
+        dayAnns.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+'</div>';}).join('')+'</div>';
     } else {
       tc.innerHTML='<div style="font-size:12px;color:var(--tm)">등록된 연차가 없습니다.<\/div>';
     }
@@ -1696,7 +1698,6 @@ function refreshCPopState(date){
     var myExist=cAn.find(function(a){return a.empId===CU.id&&a.date===date;});
     var others=cAn.filter(function(a){return a.date===date&&a.empId!==CU.id;});
     document.getElementById('cpop-del').style.display=myExist?'inline-flex':'none';
-    document.getElementById('cpop-memo').value=myExist?(myExist.memo||''):'';
     if(others.length){
       tc.innerHTML='<div style="font-size:12px;color:var(--ts);margin-bottom:8px;line-height:1.8">'+
         others.map(function(a){return '<div>'+dispName(a.empId,a.empName)+' — '+a.type+'<\/div>';}).join('')+'<\/div>';
@@ -1713,7 +1714,6 @@ function refreshCPopState(date){
   document.getElementById('cpop-lbl').textContent=date+' - '+targetName;
   var exist=cAn.find(function(a){return a.empId===targetId&&a.date===date;});
   document.getElementById('cpop-del').style.display=exist?'inline-flex':'none';
-  document.getElementById('cpop-memo').value=exist?(exist.memo||''):'';
   ATYPES.filter(function(t){return !t.weekendOnly||isWeekend(date);}).forEach(function(t){
     var btn=document.createElement('button');
     btn.className='at-btn'+(exist&&exist.type===t.k?' sel':'');
@@ -1737,12 +1737,11 @@ function saveAnnual(type){
   if(!popDate){alert('날짜를 다시 선택해주세요.');return;}
   var t=getPopTarget();
   if(!t.id){alert('직원을 선택해주세요.');return;}
-  var memoVal=(document.getElementById('cpop-memo').value||'').trim();
-  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:type,memo:memoVal}}).then(function(res){
+  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:type}}).then(function(res){
     if(res.ok){
       // cAn 즉시 업데이트
       cAn=cAn.filter(function(a){return !(a.empId===t.id&&a.date===popDate);});
-      cAn.push({empId:t.id,empName:t.name,date:popDate,type:type,memo:memoVal});
+      cAn.push({empId:t.id,empName:t.name,date:popDate,type:type});
       closeCPop();renderCal();loadCal();
     }else alert(res.error||'저장 실패');
   });
@@ -1751,7 +1750,7 @@ function deleteAnnual(){
   if(!confirm('연차를 삭제하시겠습니까?')) return;
   if(!popDate) return;
   var t=getPopTarget();
-  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:'',memo:''}}).then(function(res){
+  api('saveAnnual',{a:{empId:t.id,empName:t.name,date:popDate,type:''}}).then(function(res){
     if(res.ok){
       cAn=cAn.filter(function(a){return !(a.empId===t.id&&a.date===popDate);});
       closeCPop();renderCal();loadCal();
@@ -3327,7 +3326,6 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('myinfo-ok').addEventListener('click',saveMyInfo);
   var apDateEl=document.getElementById('ap-date');
   if(apDateEl){
-    apDateEl.value=new Date().toISOString().slice(0,10);
     apDateEl.addEventListener('change',loadAllPerfNew);
   }
   var apPrev=document.getElementById('ap-prev-btn');
@@ -3525,7 +3523,7 @@ var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
   {v:'오전반반차',l:'오전반반차',hours:2},{v:'오후반반차',l:'오후반반차',hours:2},
-  {v:'휴일근무',l:'휴일근무',hours:0}
+  {v:'휴일근무',l:'휴일근무',hours:0},{v:'공가(예비군)',l:'공가(예비군)',hours:8}
 ];
 
 // 통화시간(H:MM:SS) 파싱 - 엑셀/시트가 시간값을 Date객체, 일련번호(소수), 또는
