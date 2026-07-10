@@ -884,7 +884,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxP5UlkZKLj-LFYlX9nNjrkaAvExus3CnEsRIS1tm7gF8dwXWXItibBLWBSVA4Id5zVKw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3606,8 +3606,8 @@ function paIsTemplateFormat(content){ return /ㅇ\s*(접속번호|서비스번�
 function paPickBestEntry(entries,yuchija,targetDate){
   if(!entries.length) return null;
   // 집계 날짜가 지정되면, 그 날짜 "이전(당일 포함)"에 남겨진 메모만 후보로 인정.
-  // (담당자가 하루 전에 미리 메모를 남기고 다음날 접수되는 경우가 있어 정확히 같은 날짜만 보면 놓침.
-  //  반대로 집계일보다 미래 날짜 메모는 "취소 후 다른 날 재접수" 같은 별개 건일 수 있어 제외해야 함)
+  // 실제 운영에서는 접수일이 정확히 관리된다는 전제하에, 집계일 다음날 아침에 수집하면 미래 메모가
+  // 존재할 수 없어야 정상이다 (미래 메모가 있다면 접수일 자체가 잘못된 것 - 데이터 정정이 필요한 문제).
   var pool00=targetDate?entries.filter(function(e){return e.ts.slice(0,10)<=targetDate;}):entries;
   if(!pool00.length) return null;
   var real=pool00.filter(function(e){return !paIsNonWorkMemo(e.type,e.content)&&!paIsPostProcessChecklist(e.content)&&e.name!==yuchija;});
@@ -3623,6 +3623,20 @@ function paFindStaff(history,yuchija,targetDate){
   var best=paPickBestEntry(entries,yuchija,targetDate);
   return best?{name:best.name,ts:best.ts,content:best.content}:null;
 }
+// 같은 고객의 상품행(TV/인터넷 등)이 여러 개로 나뉘어 있을 때, 각 행을 따로 판별해서 타임스탬프로만 비교하면
+// 정식 템플릿 우선순위가 행 경계를 못 넘어간다 (예: A행의 정식템플릿보다 B행의 비정식 메모가 날짜만 최신이라 잘못 이김).
+// 그래서 여러 행의 이력을 모두 합쳐 하나의 후보 풀로 만든 뒤 한 번에 판별한다.
+function paFindStaffFromRows(rows,targetDate){
+  var allEntries=[];
+  var yuchijaSet={};
+  rows.forEach(function(r){
+    if(r['유치자']) yuchijaSet[r['유치자']]=true;
+    paExtractEntries(r['고객이력']).forEach(function(e){ allEntries.push(e); });
+  });
+  var entries=allEntries.filter(function(e){return paIsInternalName(e.name)&&!yuchijaSet[e.name];});
+  var best=paPickBestEntry(entries,null,targetDate);
+  return best?{name:best.name,ts:best.ts,content:best.content}:null;
+}
 // 유선 상품명 분류: KT 계열 + 유선기타_(KT-biz)*만 포함, 그 외(타통신사/렌탈/모바일/부가상품/정산관련 등)는 전부 제외(null)
 function paClassifyWiredProduct(name){
   name=name||'';
@@ -3633,9 +3647,7 @@ function paClassifyWiredProduct(name){
   return null; // 그 외 전부 제외 (SKT/SKB/LGU+/SKYLIFE/HelloVision/렌탈/모바일/KT_부가상품/정산관련/추가지급 등)
 }
 function paStatusQualifies(category,status){
-  status=status||'';
-  if(category==='약정갱신') return status.indexOf('접수중')!==-1||status.indexOf('개통완료')!==-1;
-  return true; // 유선신규/유선기타/기가아이즈/무선: 상태 무관, 이력에서 담당자만 찾으면 됨
+  return true; // 모든 카테고리 상태 무관 - 이력에서 담당자 유무/정식이력 유무로 판단 (paIsCancelledBeforeRealWork)
 }
 // 취소완료/보류 상태인 경우, "일단 접수는 됐다가" 취소/보류된 건지 vs "접수 자체가 안 되고" 바로 취소된 건지 구분해야 함.
 // 정식 접수템플릿(ㅇ서비스번호/접속번호/일정 등)이나 "접수완료"/"개통완료" 흔적이 이력에 전혀 없으면, 접수 전 취소로 보고 카운팅 제외.
@@ -3677,8 +3689,7 @@ function paAggregate(){
         PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'취소/보류 상태이고 서비스번호·접속번호·일정 등 정식 접수이력이 전혀 없음 (접수 전 취소로 판단)'});
         return;
       }
-      var best=null;
-      eligibleRows.forEach(function(r){ var f=paFindStaff(r['고객이력'],r['유치자'],targetDate); if(f&&(!best||f.ts>best.ts)) best=f; });
+      var best=paFindStaffFromRows(eligibleRows,targetDate);
       if(best) addCount(best.name,cat,g.name,best.ts,best.content);
       else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:'담당자 메모 없음/판별 불가',key:key});
     });
