@@ -894,7 +894,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxP5UlkZKLj-LFYlX9nNjrkaAvExus3CnEsRIS1tm7gF8dwXWXItibBLWBSVA4Id5zVKw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3038,23 +3038,16 @@ function retireEmpFromModal(){
   var curUser=DU.find(function(x){return x.id===_editEmpId;});
   if(curUser&&curUser.role==='admin'){alert('관리자는 퇴사 처리할 수 없습니다. 먼저 직원 권한으로 변경해주세요.');return;}
   if(curUser&&curUser.retired){alert('이미 퇴사 처리된 직원입니다.');return;}
-  if(!confirm('이 직원을 퇴사 처리하시겠습니까?\n\n· 기존 실적/연차 데이터는 그대로 유지됩니다.\n· 표시 이름이 등록 순서에 따라 "퇴사자1, 퇴사자2 ..."로 자동 변경됩니다.\n· 로그인 및 신규 실적/연차 대상 선택 목록에서 제외됩니다.')) return;
-  api('getAllUsers',{}).then(function(r){
-    var list=r.ok?r.employees:DU;
-    var maxNum=0;
-    list.forEach(function(u){
-      var m=/^퇴사자(\d+)$/.exec(u.name||'');
-      if(m) maxNum=Math.max(maxNum,parseInt(m[1],10));
-    });
-    var newName='퇴사자'+(maxNum+1);
-    var oldName=curUser?curUser.name:_editEmpId;
-    api('updateEmpAdmin',{id:_editEmpId,fields:{name:newName,retired:true}}).then(function(res){
-      if(!res.ok){alert(res.error||'퇴사 처리 실패');return;}
-      addLog(oldName+' → '+newName+' 퇴사 처리');
-      _empNameById[_editEmpId]=newName;
-      closeM('m-empd');
-      refreshEmpNameMap(function(){_loadedTabs.emps=0;_loadedTabs.eval=0;loadEmps();});
-    });
+  if(!confirm('이 직원을 퇴사 처리하시겠습니까?\n\n· 기존 실적/연차 데이터는 그대로 유지됩니다.\n· 표시 이름 앞에 "(퇴)"가 붙습니다. 예) 송채현 → (퇴)송채현\n· 로그인 및 신규 실적/연차 대상 선택 목록에서 제외됩니다.\n· 계정정보 페이지에는 계속 표시됩니다 (계정 폐기 처리용).')) return;
+  var oldName=curUser?curUser.name:_editEmpId;
+  var newName=/^\(퇴\)/.test(oldName)?oldName:'(퇴)'+oldName;
+  var nowStr=new Date().toISOString().slice(0,16).replace('T',' ');
+  api('updateEmpAdmin',{id:_editEmpId,fields:{name:newName,retired:true,retiredAt:nowStr}}).then(function(res){
+    if(!res.ok){alert(res.error||'퇴사 처리 실패');return;}
+    addLog(oldName+' → '+newName+' 퇴사 처리');
+    _empNameById[_editEmpId]=newName;
+    closeM('m-empd');
+    refreshEmpNameMap(function(){_loadedTabs.emps=0;_loadedTabs.eval=0;loadEmps();});
   });
 }
 function deleteEmpFromModal(){
@@ -4092,26 +4085,45 @@ function loadAccounts(){
   if(tbl) tbl.innerHTML='<tr><td style="padding:20px;color:var(--tm)">불러오는 중...</td></tr>';
   api('getAllUsers',{}).then(function(r){
     if(!r.ok) return;
-    ACC_EMP=r.employees.filter(function(u){return !u.retired;});
+    var active=r.employees.filter(function(u){return !u.retired;});
+    var retired=r.employees.filter(function(u){return u.retired;})
+      .sort(function(a,b){return (a.retiredAt||'').localeCompare(b.retiredAt||'');});
+    ACC_EMP=active.concat(retired);
     renderAccTable();
   });
 }
 function renderAccTable(){
   var tbl=document.getElementById('acc-table');
   if(!tbl) return;
-  var head='<tr><th rowspan="2">이름</th><th colspan="3">메인 코스</th><th colspan="4">서브 코스</th><th colspan="4">우신 코스</th><th colspan="2">업무카톡</th></tr>'+
+  var head='<tr><th rowspan="2">이름</th><th colspan="3">메인 코스</th><th colspan="4">서브 코스</th><th colspan="4">우신 코스</th><th colspan="2">업무카톡</th><th rowspan="2">계정폐기</th></tr>'+
     '<tr><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
     '<th>사용자명</th><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
     '<th>사용자명</th><th>아이디</th><th>비밀번호</th><th>IDMS</th>'+
     '<th>아이디</th><th>비밀번호</th></tr>';
   var body=ACC_EMP.map(function(e){
-    return '<tr><td style="font-weight:700;white-space:nowrap">'+e.name+'</td>'+
+    var retiredStyle=e.retired?' style="background:#F2F2F2;color:var(--tm)"':'';
+    var disposed=e.acctDisposed==='Y';
+    return '<tr'+retiredStyle+'><td style="font-weight:700;white-space:nowrap'+(e.retired?';color:var(--tm)':'')+'">'+e.name+'</td>'+
       ACC_FIELDS.map(function(f){
-        return '<td><input type="text" data-emp="'+e.id+'" data-f="'+f+'" value="'+(e[f]||'').toString().replace(/"/g,'&quot;')+'" style="width:86px;padding:4px 5px;border:1.5px solid var(--b);border-radius:5px;font-size:11.5px"></td>';
+        return '<td><input type="text" data-emp="'+e.id+'" data-f="'+f+'" value="'+(e[f]||'').toString().replace(/"/g,'&quot;')+'" style="width:86px;padding:4px 5px;border:1.5px solid var(--b);border-radius:5px;font-size:11.5px'+(e.retired?';background:#EDEDED':'')+'"></td>';
       }).join('')+
+      '<td><button type="button" class="btn '+(disposed?'btn-dg':'btn-se')+' btn-xs acc-dispose-btn" data-emp="'+e.id+'" data-cur="'+(disposed?'Y':'N')+'">'+(disposed?'Y':'N')+'</button></td>'+
     '</tr>';
   }).join('');
   tbl.innerHTML=head+body;
+  tbl.querySelectorAll('.acc-dispose-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var newVal=btn.dataset.cur==='Y'?'N':'Y';
+      btn.textContent='처리중...';
+      api('updateEmpAdmin',{id:btn.dataset.emp,fields:{acctDisposed:newVal}}).then(function(res){
+        if(!res.ok){ alert(res.error||'저장 실패'); btn.textContent=btn.dataset.cur; return; }
+        var emp=ACC_EMP.find(function(x){return x.id===btn.dataset.emp;});
+        if(emp) emp.acctDisposed=newVal;
+        addLog((emp?emp.name:'')+' 계정폐기 '+newVal+'로 변경');
+        renderAccTable();
+      });
+    });
+  });
 }
 document.getElementById('acc-upload-file') && document.getElementById('acc-upload-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
