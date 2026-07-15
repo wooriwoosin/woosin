@@ -894,7 +894,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzkoi2ZLZSqOuzjFEWt4Ln3VZtiPtHt7Y1E7ERtlbp7DyXjqx_U-18qQbrbDjqOmpAG2g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3757,7 +3757,7 @@ function paSaveFixdur(){ api('saveSettings',{perfaggFixdur:PA_FIXDUR}); }
 // ── 직원목록 / 연차 로드 ──
 function paLoadEmployees(cb){
   api('getAllUsers',{}).then(function(r){
-    if(r.ok) PA_EMP=r.employees.filter(function(u){return !u.retired;}).map(function(u){return {id:u.id,name:u.name,team:u.team||'미지정'};});
+    if(r.ok) PA_EMP=r.employees.map(function(u){return {id:u.id,name:u.name,team:u.retired?'(퇴사자)':(u.team||'미지정'),retired:!!u.retired};});
     if(cb) cb();
   });
 }
@@ -4046,10 +4046,11 @@ function loadAllPerfNewRender(){
   Promise.all([api('getAllUsers',{}), api('getDailyPerf',{date:date})]).then(function(rs){
     var empRes=rs[0], perfRes=rs[1];
     if(!empRes.ok||!body) return;
-    var emps=empRes.employees.filter(function(u){return !u.retired;});
     var perfByEmp={};
     if(perfRes.ok) perfRes.rows.forEach(function(r){ perfByEmp[r.empId]=r; });
-    var teams={}; emps.forEach(function(e){ (teams[e.team||'미지정']=teams[e.team||'미지정']||[]).push(e); });
+    // 재직자는 전부, 퇴사자는 해당 날짜에 실제 게시된 실적이 있는 사람만 포함 (안 그러면 모든 퇴사자가 매일 나열됨)
+    var emps=empRes.employees.filter(function(u){return !u.retired||perfByEmp[u.id];});
+    var teams={}; emps.forEach(function(e){ (teams[e.retired?'(퇴사자)':(e.team||'미지정')]=teams[e.retired?'(퇴사자)':(e.team||'미지정')]||[]).push(e); });
 
     body.innerHTML=Object.keys(teams).map(function(team){
       var cards=teams[team].map(function(e){
