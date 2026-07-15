@@ -898,7 +898,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzkoi2ZLZSqOuzjFEWt4Ln3VZtiPtHt7Y1E7ERtlbp7DyXjqx_U-18qQbrbDjqOmpAG2g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3535,7 +3535,8 @@ var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
   {v:'오전반반차',l:'오전반반차',hours:2},{v:'오후반반차',l:'오후반반차',hours:2},
-  {v:'휴일근무',l:'휴일근무',hours:0},{v:'공가(예비군)',l:'공가(예비군)',hours:8}
+  {v:'휴일근무',l:'휴일근무',hours:0},{v:'공가(예비군)',l:'공가(예비군)',hours:8},
+  {v:'근무없음',l:'근무없음 (휴일 미출근)',hours:0}
 ];
 
 // 통화시간(H:MM:SS) 파싱 - 엑셀/시트가 시간값을 Date객체, 일련번호(소수), 또는
@@ -3779,6 +3780,11 @@ function paLoadAnnualsForDate(date,cb){
 }
 
 // ── 실적집계 탭 초기화 ──
+function paDefaultLeaveFor(date,map,empId){
+  var v=map[empId]||'';
+  if(!v&&isOffDay(date)) return '근무없음';
+  return v;
+}
 function loadPerfAgg(){
   var dateEl=document.getElementById('pa-date');
   if(dateEl && !dateEl.value) dateEl.value=new Date().toISOString().slice(0,10);
@@ -3786,7 +3792,7 @@ function loadPerfAgg(){
   paLoadEmployees(function(){
     PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
     paLoadAnnualsForDate(dateEl.value,function(map){
-      PA_EMP.forEach(function(e){ PA_ROWSTATE[e.id].leave=map[e.id]||''; });
+      PA_EMP.forEach(function(e){ PA_ROWSTATE[e.id].leave=paDefaultLeaveFor(dateEl.value,map,e.id); });
       paRenderResult();
     });
   });
@@ -4026,7 +4032,11 @@ function paPublish(){
     if(ph&&(ph.O_CONN||ph.I_CONN||ph.P_CONN)) return true;
     return sum>0;
   }
-  var rows=PA_EMP.filter(function(e){return !e.retired||hasAnyCount(e);}).map(function(e){
+  var rows=PA_EMP.filter(function(e){
+    var st=PA_ROWSTATE[e.id];
+    if(st&&st.leave==='근무없음') return false; // 휴일 미출근자는 게시 대상에서 제외
+    return !e.retired||hasAnyCount(e);
+  }).map(function(e){
     var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
     var c=counts[e.name]||paEmptyCounts();
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
@@ -4051,7 +4061,7 @@ document.getElementById('pa-date') && document.getElementById('pa-date').addEven
   var date=this.value; if(!date) return;
   PA_MANUAL_ADJ=[];
   paLoadAnnualsForDate(date,function(map){
-    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; PA_ROWSTATE[e.id].leave=map[e.id]||''; });
+    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; PA_ROWSTATE[e.id].leave=paDefaultLeaveFor(date,map,e.id); });
     paRenderResult();
   });
 });
