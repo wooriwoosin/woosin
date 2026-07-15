@@ -218,6 +218,10 @@ table.pt td.otc{background:#FFF8F8;}
 @media(max-width:640px){.main{padding:14px;}.topbar,.tabnav{padding:0 14px;}.m2{grid-template-columns:1fr;}.cal-day{min-height:88px;}}
 /* ── 실적집계(perfagg) 도구 & 전체실적(allperf) 카드 ── */
 .pa-team-block{margin-bottom:16px;}
+.pa-retired-block{margin-top:20px;border-top:2px dashed var(--b);padding-top:12px;opacity:.75;}
+.pa-retired-block summary{background:#EEE;color:var(--tm);list-style:none;}
+.pa-retired-block summary::-webkit-details-marker{display:none;}
+.pa-retired-block .pa-emp-card{background:#F5F5F5;}
 .pa-team-hd{font-size:13px;font-weight:800;color:#fff;background:var(--tp);padding:8px 14px;border-radius:8px 8px 0 0;}
 .pa-emp-card{background:var(--s);border:1px solid var(--b);border-top:none;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
 .pa-team-block .pa-emp-card:last-child{border-radius:0 0 8px 8px;}
@@ -894,7 +898,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzkoi2ZLZSqOuzjFEWt4Ln3VZtiPtHt7Y1E7ERtlbp7DyXjqx_U-18qQbrbDjqOmpAG2g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3757,7 +3761,12 @@ function paSaveFixdur(){ api('saveSettings',{perfaggFixdur:PA_FIXDUR}); }
 // ── 직원목록 / 연차 로드 ──
 function paLoadEmployees(cb){
   api('getAllUsers',{}).then(function(r){
-    if(r.ok) PA_EMP=r.employees.map(function(u){return {id:u.id,name:u.name,team:u.retired?'(퇴사자)':(u.team||'미지정'),retired:!!u.retired};});
+    if(r.ok){
+      var active=r.employees.filter(function(u){return !u.retired;});
+      var retired=r.employees.filter(function(u){return u.retired;})
+        .sort(function(a,b){return (a.retiredAt||'').localeCompare(b.retiredAt||'');});
+      PA_EMP=active.concat(retired).map(function(u){return {id:u.id,name:u.name,team:u.retired?'(퇴사자)':(u.team||'미지정'),retired:!!u.retired};});
+    }
     if(cb) cb();
   });
 }
@@ -3860,7 +3869,18 @@ function paRenderResult(){
   var wrap=document.getElementById('pa-result');
   if(!wrap) return;
   if(!PA_EMP.length){ wrap.innerHTML='<div style="padding:20px;color:var(--tm)">직원 목록을 불러오는 중...</div>'; return; }
-  var teams={}; PA_EMP.forEach(function(e){ (teams[e.team]=teams[e.team]||[]).push(e); });
+  function hasAnyCount(e){
+    var c=counts[e.name]; if(!c) return false;
+    var sum=PA_CATS.reduce(function(s,cat){return s+(c[cat]||0);},0);
+    var ph=paGetPhoneStat(e.name);
+    if(ph&&(ph.O_CONN||ph.I_CONN||ph.P_CONN)) return true;
+    return sum>0;
+  }
+  var teams={}; var retiredList=[];
+  PA_EMP.forEach(function(e){
+    if(e.retired){ if(hasAnyCount(e)) retiredList.push(e); return; }
+    (teams[e.team]=teams[e.team]||[]).push(e);
+  });
 
   function countPill(c,cat,cls,num,label,staffName){
     num=num!==undefined?num:c[cat]; label=label||cat;
@@ -3869,42 +3889,47 @@ function paRenderResult(){
       '<span class="pa-cnt-num">'+num+'</span><span class="pa-cnt-lbl">'+label+'</span></div>';
   }
 
-  wrap.innerHTML=Object.keys(teams).map(function(team){
-    var cards=teams[team].map(function(e){
-      var st=PA_ROWSTATE[e.id]||(PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0});
-      var c=counts[e.name]||paEmptyCounts();
+  function buildCard(e){
+    var st=PA_ROWSTATE[e.id]||(PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0});
+    var c=counts[e.name]||paEmptyCounts();
 
-      var leaveSelect='<select class="pa-pill-select" data-emp="'+e.id+'" data-role="leave">'+
-        PA_LEAVE_OPTS.map(function(o){return '<option value="'+o.v+'"'+(o.v===st.leave?' selected':'')+'>'+(o.l==='-'?'연차 없음':o.l)+'</option>';}).join('')+'</select>';
+    var leaveSelect='<select class="pa-pill-select" data-emp="'+e.id+'" data-role="leave">'+
+      PA_LEAVE_OPTS.map(function(o){return '<option value="'+o.v+'"'+(o.v===st.leave?' selected':'')+'>'+(o.l==='-'?'연차 없음':o.l)+'</option>';}).join('')+'</select>';
 
-      var fixNames=st.fixdurNames||[];
-      var fixChips=PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
-        var on=fixNames.indexOf(fd.name)!==-1;
-        return '<span class="pa-fixdur-chip'+(on?' on':'')+'" data-emp="'+e.id+'" data-fdname="'+fd.name.replace(/"/g,'&quot;')+'">🔧 '+fd.name+'</span>';
-      }).join('');
-      var fixPill='<div class="pa-cnt-pill pa-c-fixdur pa-fixdur-multi">'+(fixChips||'<span style="font-size:10px;color:var(--tm)">등록된 고정업무 없음</span>')+'</div>';
-
-      var isVocDuty=fixNames.some(function(n){return n.toUpperCase().indexOf('VOC')!==-1;});
-      var vocControl=isVocDuty
-        ? '<span class="pa-voc-wrap"><input type="number" min="0" data-emp="'+e.id+'" data-role="voc" value="'+(st.voc||0)+'"> VOC</span>'
-        : '<span class="pa-voc-wrap pa-voc-disabled" title="고정업무에 VOC가 포함된 경우만 입력 가능">- VOC</span>';
-
-      var phoneStat=paGetPhoneStat(e.name);
-      var callPills=phoneStat?
-        countPill(c,'발신','pa-c-call',phoneStat.O_CONN,'발신 '+paS2hms(phoneStat.O_TIME))+
-        countPill(c,'수신','pa-c-call',phoneStat.I_CONN,'수신 '+paS2hms(phoneStat.I_TIME))+
-        countPill(c,'땡김','pa-c-call',phoneStat.P_CONN,'땡김 '+paS2hms(phoneStat.P_TIME)) : '';
-
-      return '<div class="pa-emp-card">'+
-        '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
-          '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
-        '<div class="pa-counts">'+fixPill+
-          countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,undefined,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
-          callPills+
-        '</div></div>';
+    var fixNames=st.fixdurNames||[];
+    var fixChips=PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
+      var on=fixNames.indexOf(fd.name)!==-1;
+      return '<span class="pa-fixdur-chip'+(on?' on':'')+'" data-emp="'+e.id+'" data-fdname="'+fd.name.replace(/"/g,'&quot;')+'">🔧 '+fd.name+'</span>';
     }).join('');
+    var fixPill='<div class="pa-cnt-pill pa-c-fixdur pa-fixdur-multi">'+(fixChips||'<span style="font-size:10px;color:var(--tm)">등록된 고정업무 없음</span>')+'</div>';
+
+    var isVocDuty=fixNames.some(function(n){return n.toUpperCase().indexOf('VOC')!==-1;});
+    var vocControl=isVocDuty
+      ? '<span class="pa-voc-wrap"><input type="number" min="0" data-emp="'+e.id+'" data-role="voc" value="'+(st.voc||0)+'"> VOC</span>'
+      : '<span class="pa-voc-wrap pa-voc-disabled" title="고정업무에 VOC가 포함된 경우만 입력 가능">- VOC</span>';
+
+    var phoneStat=paGetPhoneStat(e.name);
+    var callPills=phoneStat?
+      countPill(c,'발신','pa-c-call',phoneStat.O_CONN,'발신 '+paS2hms(phoneStat.O_TIME))+
+      countPill(c,'수신','pa-c-call',phoneStat.I_CONN,'수신 '+paS2hms(phoneStat.I_TIME))+
+      countPill(c,'땡김','pa-c-call',phoneStat.P_CONN,'땡김 '+paS2hms(phoneStat.P_TIME)) : '';
+
+    return '<div class="pa-emp-card">'+
+      '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
+        '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
+      '<div class="pa-counts">'+fixPill+
+        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,undefined,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
+        callPills+
+      '</div></div>';
+  }
+
+  wrap.innerHTML=Object.keys(teams).map(function(team){
+    var cards=teams[team].map(buildCard).join('');
     return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
-  }).join('');
+  }).join('')+
+  (retiredList.length?
+    '<details class="pa-retired-block"><summary class="pa-team-hd" style="cursor:pointer">📦 (퇴사자) 실적 있음 '+retiredList.length+'명 — 클릭하여 펼치기</summary>'+
+    retiredList.map(buildCard).join('')+'</details>' : '');
 
   wrap.querySelectorAll('select[data-role="leave"]').forEach(function(sel){
     sel.addEventListener('change',function(){ PA_ROWSTATE[sel.dataset.emp].leave=sel.value; });
@@ -3994,7 +4019,14 @@ function paPublish(){
   if(!date){ alert('집계 날짜를 선택하세요.'); return; }
   if(!confirm(date+' 실적을 게시하시겠습니까?\n같은 날짜에 이미 게시된 내용이 있으면 덮어씁니다.')) return;
   var counts=paAggregate();
-  var rows=PA_EMP.map(function(e){
+  function hasAnyCount(e){
+    var c=counts[e.name]; if(!c) return false;
+    var sum=PA_CATS.reduce(function(s,cat){return s+(c[cat]||0);},0);
+    var ph=paGetPhoneStat(e.name);
+    if(ph&&(ph.O_CONN||ph.I_CONN||ph.P_CONN)) return true;
+    return sum>0;
+  }
+  var rows=PA_EMP.filter(function(e){return !e.retired||hasAnyCount(e);}).map(function(e){
     var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
     var c=counts[e.name]||paEmptyCounts();
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
