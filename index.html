@@ -770,7 +770,6 @@ table.pt td.otc{background:#FFF8F8;}
     <div class="mttl" id="tcu-title">사용내역 추가</div>
     <div class="fg"><label>날짜</label><input type="date" id="tcu-date"></div>
     <div class="fg"><label>사용 카드</label><select id="tcu-card"></select></div>
-    <div class="fg"><label>사용자</label><select id="tcu-emp"></select></div>
     <div class="fg"><label>사용내역</label><input type="text" id="tcu-desc" placeholder="예: 팀 회식비"></div>
     <div class="fg"><label>금액</label><input type="number" id="tcu-amount" min="0"></div>
     <div class="fg"><label>비고</label><input type="text" id="tcu-note"></div>
@@ -957,7 +956,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxXam7N79u0o8Uk05gSX_pBBIk-9Z2CmQxpCIyI6cuazuV89lv8V_Yx0NvPZt6nqT6Fmw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -4292,16 +4291,15 @@ document.getElementById('acc-save-all-btn') && document.getElementById('acc-save
 // ══════════════════════════════════════════════
 // 팀카드관리 (teamCardAdmin 전용)
 // ══════════════════════════════════════════════
-var TC_CARDS=[]; var TC_USAGE=[]; var TC_EMP=[]; var TC_EDIT_ID=null;
+var TC_CARDS=[]; var TC_USAGE=[]; var TC_EDIT_ID=null;
 function loadTeamCard(){
   var monthEl=document.getElementById('tc-month');
   if(monthEl && !monthEl.value) monthEl.value=new Date().toISOString().slice(0,7);
   var ym=monthEl.value;
-  Promise.all([api('getTeamCards',{}), api('getTeamCardUsage',{yearMonth:ym}), api('getTeamCardBudget',{yearMonth:ym}), api('getAllUsers',{})]).then(function(rs){
-    var cardsRes=rs[0], usageRes=rs[1], budgetRes=rs[2], empRes=rs[3];
+  Promise.all([api('getTeamCards',{}), api('getTeamCardUsage',{yearMonth:ym}), api('getTeamCardBudget',{yearMonth:ym})]).then(function(rs){
+    var cardsRes=rs[0], usageRes=rs[1], budgetRes=rs[2];
     if(cardsRes.ok) TC_CARDS=cardsRes.cards.filter(function(c){return c.active!=='N';});
     if(usageRes.ok) TC_USAGE=usageRes.rows;
-    if(empRes.ok) TC_EMP=empRes.employees.filter(function(u){return !u.retired;});
     document.getElementById('tc-budget').value=budgetRes.ok?(budgetRes.amount||''):'';
     renderTcCards();
     renderTcUsage();
@@ -4330,15 +4328,15 @@ function tcCardName(id){ var c=TC_CARDS.find(function(x){return x.id===id;}); re
 function renderTcUsage(){
   var tbl=document.getElementById('tc-usage-table');
   if(!tbl) return;
-  var head='<tr><th>날짜</th><th>사용카드</th><th>사용자</th><th>내역</th><th>금액</th><th>비고</th><th></th></tr>';
+  var head='<tr><th>날짜</th><th>사용카드</th><th>내역</th><th>금액</th><th>비고</th><th></th></tr>';
   var sorted=TC_USAGE.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
   var body=sorted.map(function(r){
-    return '<tr><td>'+r.date+'</td><td>'+tcCardName(r.cardId)+'</td><td>'+r.empName+'</td><td>'+r.desc+'</td>'+
+    return '<tr><td>'+r.date+'</td><td>'+tcCardName(r.cardId)+'</td><td>'+r.desc+'</td>'+
       '<td style="text-align:right">'+Number(r.amount||0).toLocaleString()+'</td><td>'+(r.note||'')+'</td>'+
       '<td style="white-space:nowrap"><button type="button" class="btn btn-se btn-xs tc-usage-edit" data-id="'+r.id+'">수정</button> '+
       '<button type="button" class="btn btn-dg btn-xs tc-usage-del" data-id="'+r.id+'">삭제</button></td></tr>';
   }).join('');
-  tbl.innerHTML=head+(body||'<tr><td colspan="7" style="color:var(--tm);padding:16px;text-align:center">이번 달 사용내역이 없습니다.</td></tr>');
+  tbl.innerHTML=head+(body||'<tr><td colspan="6" style="color:var(--tm);padding:16px;text-align:center">이번 달 사용내역이 없습니다.</td></tr>');
   tbl.querySelectorAll('.tc-usage-edit').forEach(function(btn){
     btn.addEventListener('click',function(){ openTcUsageModal(btn.dataset.id); });
   });
@@ -4389,14 +4387,11 @@ function openTcUsageModal(id){
   TC_EDIT_ID=id||null;
   var cardOpts=TC_CARDS.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
   document.getElementById('tcu-card').innerHTML=cardOpts||'<option value="">등록된 카드 없음</option>';
-  var empOpts='<option value="">직원 선택</option>'+TC_EMP.map(function(u){return '<option value="'+u.id+'" data-name="'+u.name+'">'+u.name+'</option>';}).join('');
-  document.getElementById('tcu-emp').innerHTML=empOpts;
   if(id){
     var r=TC_USAGE.find(function(x){return x.id===id;});
     document.getElementById('tcu-title').textContent='사용내역 수정';
     document.getElementById('tcu-date').value=r.date||'';
     document.getElementById('tcu-card').value=r.cardId||'';
-    document.getElementById('tcu-emp').value=r.empId||'';
     document.getElementById('tcu-desc').value=r.desc||'';
     document.getElementById('tcu-amount').value=r.amount||'';
     document.getElementById('tcu-note').value=r.note||'';
@@ -4414,18 +4409,14 @@ document.getElementById('tcu-cancel') && document.getElementById('tcu-cancel').a
 document.getElementById('tcu-save') && document.getElementById('tcu-save').addEventListener('click',function(){
   var date=document.getElementById('tcu-date').value;
   var cardId=document.getElementById('tcu-card').value;
-  var empSel=document.getElementById('tcu-emp');
-  var empId=empSel.value;
-  var empName=empSel.selectedOptions[0]?empSel.selectedOptions[0].dataset.name:'';
   var desc=document.getElementById('tcu-desc').value.trim();
   var amount=Number(document.getElementById('tcu-amount').value||0);
   var note=document.getElementById('tcu-note').value.trim();
   if(!date){alert('날짜를 선택해주세요.');return;}
   if(!cardId){alert('사용 카드를 선택해주세요.');return;}
-  if(!empId){alert('사용자를 선택해주세요.');return;}
   if(!desc){alert('사용내역을 입력해주세요.');return;}
   var ym=date.slice(0,7);
-  var row={yearMonth:ym,date:date,cardId:cardId,empId:empId,empName:empName,desc:desc,amount:amount,note:note};
+  var row={yearMonth:ym,date:date,cardId:cardId,desc:desc,amount:amount,note:note};
   var action=TC_EDIT_ID?api('updateTeamCardUsage',{id:TC_EDIT_ID,fields:row}):api('addTeamCardUsage',{row:row});
   action.then(function(res){
     if(!res.ok){ alert(res.error||'저장 실패'); return; }
