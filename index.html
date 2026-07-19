@@ -628,6 +628,43 @@ table.pt td.otc{background:#FFF8F8;}
 
       </div>
     </div>
+    <!-- 팀카드관리 (teamCardAdmin 전용) -->
+    <div class="pg" id="pg-teamcard">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="cttl">💳 팀카드관리</div>
+        <input type="month" id="tc-month">
+      </div>
+
+      <div class="card" style="margin-top:0">
+        <div class="cttl" style="margin-bottom:10px;font-size:14px">이번 달 예산 / 잔액</div>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div class="fg" style="margin-bottom:0;max-width:200px"><label>월 통합 예산</label><input type="number" id="tc-budget" min="0" placeholder="예: 500000"></div>
+          <button class="btn btn-pr btn-sm" id="tc-budget-save-btn" style="width:auto">저장</button>
+          <div style="margin-left:auto;text-align:right">
+            <div style="font-size:12px;color:var(--tm)">이번 달 사용액 <b id="tc-used-amt">0</b>원</div>
+            <div style="font-size:16px;font-weight:800" id="tc-balance">잔액 0원</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="cttl" style="margin-bottom:0;font-size:14px">등록된 카드</div>
+          <button class="btn btn-se btn-sm" id="tc-card-add-btn">+ 카드 등록</button>
+        </div>
+        <div id="tc-card-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="cttl" style="margin-bottom:0;font-size:14px">사용내역</div>
+          <button class="btn btn-pr btn-sm" id="tc-usage-add-btn">+ 내역 추가</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="pt" id="tc-usage-table"></table>
+        </div>
+      </div>
+    </div>
     <!-- 설정 -->
     <div class="pg" id="pg-settings">
       <div class="card" style="margin-top:0">
@@ -718,6 +755,28 @@ table.pt td.otc{background:#FFF8F8;}
 </div>
 
 <!-- 모달: 내 정보 수정 -->
+<div class="mbg" id="m-tc-card">
+  <div class="modal" style="max-width:420px">
+    <div class="mttl">카드 등록</div>
+    <div class="fg"><label>카드명</label><input type="text" id="tcc-name" placeholder="예: 우리카드 법인카드"></div>
+    <div class="fg"><label>카드사</label><input type="text" id="tcc-issuer" placeholder="예: 신한카드"></div>
+    <div class="fg"><label>카드번호 뒷자리</label><input type="text" id="tcc-last4" maxlength="4" placeholder="예: 1234"></div>
+    <div class="fg"><label>비고</label><input type="text" id="tcc-note"></div>
+    <div class="mact"><button class="btn btn-se" id="tcc-cancel">취소</button><button class="btn btn-pr" style="width:auto" id="tcc-save">저장</button></div>
+  </div>
+</div>
+<div class="mbg" id="m-tc-usage">
+  <div class="modal" style="max-width:460px">
+    <div class="mttl" id="tcu-title">사용내역 추가</div>
+    <div class="fg"><label>날짜</label><input type="date" id="tcu-date"></div>
+    <div class="fg"><label>사용 카드</label><select id="tcu-card"></select></div>
+    <div class="fg"><label>사용자</label><select id="tcu-emp"></select></div>
+    <div class="fg"><label>사용내역</label><input type="text" id="tcu-desc" placeholder="예: 팀 회식비"></div>
+    <div class="fg"><label>금액</label><input type="number" id="tcu-amount" min="0"></div>
+    <div class="fg"><label>비고</label><input type="text" id="tcu-note"></div>
+    <div class="mact"><button class="btn btn-se" id="tcu-cancel">취소</button><button class="btn btn-pr" style="width:auto" id="tcu-save">저장</button></div>
+  </div>
+</div>
 <div class="mbg" id="m-myinfo">
   <div class="modal">
     <div class="mttl">내 정보 수정 <span style="font-size:12px;color:var(--tm);font-weight:400">(본인 항목만)</span></div>
@@ -898,7 +957,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzkoi2ZLZSqOuzjFEWt4Ln3VZtiPtHt7Y1E7ERtlbp7DyXjqx_U-18qQbrbDjqOmpAG2g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -1272,7 +1331,7 @@ function showApp(){
   var rbg=document.getElementById('rbg');
   if(CU.role==='admin'){
     rbg.textContent='관리자'; rbg.className='rbg rb-a';
-    renderTabs([
+    var adminTabs=[
       {id:'allperf',l:'📊 전체실적',p:'pg-allperf'},
       {id:'perfagg',l:'📈 실적집계',p:'pg-input'},
       {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
@@ -1282,11 +1341,14 @@ function showApp(){
       {id:'seats',l:'🗺️ 자리배치도&내선번호',p:'pg-seats'},
       {id:'ip',l:'🌐 IP 현황',p:'pg-ip'},
       {id:'settings',l:'⚙️ 설정',p:'pg-settings'}
-    ]);
+    ];
+    if(CU.teamCardAdmin) adminTabs.splice(5,0,{id:'teamcard',l:'💳 팀카드관리',p:'pg-teamcard'});
+    renderTabs(adminTabs);
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'allperf';
       var validTabs=['allperf','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
+      if(CU.teamCardAdmin) validTabs.push('teamcard');
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
     });
   } else {
@@ -1353,6 +1415,7 @@ function switchTab(id){
   }
   if(id==='seats') loadSeats();
   if(id==='accounts') loadAccounts();
+  if(id==='teamcard') loadTeamCard();
   if(id==='ip') loadIPs();
   if(id==='myinfo') loadMyInfo();
   if(id==='settings') loadSettingsTab();
@@ -2947,6 +3010,10 @@ function openEmpD(id){
         (isLastAdmin?' disabled':'')+'>'+
         '<span>관리자 권한'+(isLastAdmin?' <span style="font-size:11px;color:var(--dg)">(마지막 관리자 해제 불가)<\/span>':'')+'<\/span>'+
       '<\/label><\/div>'+
+      (u.role==='admin'?('<div class="fg"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
+        '<input type="checkbox" id="ed-teamcard" style="width:16px;height:16px;accent-color:var(--ac)"'+(u.teamCardAdmin?' checked':'')+'>'+
+        '<span>💳 팀카드관리 권한<\/span>'+
+      '<\/label><\/div>'):'')+
       '<div class="slbl">보유 스킬 (관리자 전용 · 온오프)<\/div>'+
       buildSkillTogglesHtml(u.skills||{})+
       '<div class="slbl">계정 정보 (관리자 수정 가능)<\/div>'+
@@ -3021,7 +3088,8 @@ function saveEmpFromModal(){
     duty:document.getElementById('ed-duty').value.trim(),
     ext:extVal,
     skills:skills,
-    role:isAdmin?'admin':'employee'
+    role:isAdmin?'admin':'employee',
+    teamCardAdmin:(isAdmin&&document.getElementById('ed-teamcard')&&document.getElementById('ed-teamcard').checked)?'Y':'N'
   };
   ['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw'].forEach(function(k){
     var el=document.getElementById('ed-'+k);
@@ -4218,6 +4286,152 @@ document.getElementById('acc-save-all-btn') && document.getElementById('acc-save
     if(btn) btn.textContent='💾 전체 저장';
     if(res.ok){ addLog('계정정보 전체 저장 ('+res.updated.length+'명)'); alert('✅ 저장되었습니다.'); loadAccounts(); }
     else alert(res.error||'저장 실패');
+  });
+});
+
+// ══════════════════════════════════════════════
+// 팀카드관리 (teamCardAdmin 전용)
+// ══════════════════════════════════════════════
+var TC_CARDS=[]; var TC_USAGE=[]; var TC_EMP=[]; var TC_EDIT_ID=null;
+function loadTeamCard(){
+  var monthEl=document.getElementById('tc-month');
+  if(monthEl && !monthEl.value) monthEl.value=new Date().toISOString().slice(0,7);
+  var ym=monthEl.value;
+  Promise.all([api('getTeamCards',{}), api('getTeamCardUsage',{yearMonth:ym}), api('getTeamCardBudget',{yearMonth:ym}), api('getAllUsers',{})]).then(function(rs){
+    var cardsRes=rs[0], usageRes=rs[1], budgetRes=rs[2], empRes=rs[3];
+    if(cardsRes.ok) TC_CARDS=cardsRes.cards.filter(function(c){return c.active!=='N';});
+    if(usageRes.ok) TC_USAGE=usageRes.rows;
+    if(empRes.ok) TC_EMP=empRes.employees.filter(function(u){return !u.retired;});
+    document.getElementById('tc-budget').value=budgetRes.ok?(budgetRes.amount||''):'';
+    renderTcCards();
+    renderTcUsage();
+    updateTcBalance();
+  });
+}
+function renderTcCards(){
+  var wrap=document.getElementById('tc-card-list');
+  if(!wrap) return;
+  if(!TC_CARDS.length){ wrap.innerHTML='<div style="color:var(--tm);font-size:13px">등록된 카드가 없습니다.</div>'; return; }
+  wrap.innerHTML=TC_CARDS.map(function(c){
+    return '<div style="border:1.5px solid var(--b);border-radius:8px;padding:8px 12px;font-size:12.5px;display:flex;align-items:center;gap:8px">'+
+      '<div><b>'+c.name+'</b> <span style="color:var(--tm)">'+(c.issuer||'')+(c.last4?' ****'+c.last4:'')+'</span></div>'+
+      '<button type="button" class="btn btn-dg btn-xs tc-card-del" data-id="'+c.id+'">삭제</button></div>';
+  }).join('');
+  wrap.querySelectorAll('.tc-card-del').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(!confirm('이 카드를 삭제하시겠습니까? (기존 사용내역은 그대로 유지됩니다)')) return;
+      api('deleteTeamCard',{id:btn.dataset.id}).then(function(res){
+        if(res.ok){ addLog('팀카드 삭제'); loadTeamCard(); } else alert(res.error||'삭제 실패');
+      });
+    });
+  });
+}
+function tcCardName(id){ var c=TC_CARDS.find(function(x){return x.id===id;}); return c?c.name:'(삭제된 카드)'; }
+function renderTcUsage(){
+  var tbl=document.getElementById('tc-usage-table');
+  if(!tbl) return;
+  var head='<tr><th>날짜</th><th>사용카드</th><th>사용자</th><th>내역</th><th>금액</th><th>비고</th><th></th></tr>';
+  var sorted=TC_USAGE.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  var body=sorted.map(function(r){
+    return '<tr><td>'+r.date+'</td><td>'+tcCardName(r.cardId)+'</td><td>'+r.empName+'</td><td>'+r.desc+'</td>'+
+      '<td style="text-align:right">'+Number(r.amount||0).toLocaleString()+'</td><td>'+(r.note||'')+'</td>'+
+      '<td style="white-space:nowrap"><button type="button" class="btn btn-se btn-xs tc-usage-edit" data-id="'+r.id+'">수정</button> '+
+      '<button type="button" class="btn btn-dg btn-xs tc-usage-del" data-id="'+r.id+'">삭제</button></td></tr>';
+  }).join('');
+  tbl.innerHTML=head+(body||'<tr><td colspan="7" style="color:var(--tm);padding:16px;text-align:center">이번 달 사용내역이 없습니다.</td></tr>');
+  tbl.querySelectorAll('.tc-usage-edit').forEach(function(btn){
+    btn.addEventListener('click',function(){ openTcUsageModal(btn.dataset.id); });
+  });
+  tbl.querySelectorAll('.tc-usage-del').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(!confirm('이 사용내역을 삭제하시겠습니까?')) return;
+      api('deleteTeamCardUsage',{id:btn.dataset.id}).then(function(res){
+        if(res.ok){ addLog('팀카드 사용내역 삭제'); loadTeamCard(); } else alert(res.error||'삭제 실패');
+      });
+    });
+  });
+}
+function updateTcBalance(){
+  var used=TC_USAGE.reduce(function(s,r){return s+Number(r.amount||0);},0);
+  var budget=Number(document.getElementById('tc-budget').value||0);
+  document.getElementById('tc-used-amt').textContent=used.toLocaleString();
+  var balance=budget-used;
+  var balEl=document.getElementById('tc-balance');
+  balEl.textContent='잔액 '+balance.toLocaleString()+'원';
+  balEl.style.color=balance<0?'var(--dg)':'var(--ok)';
+}
+document.getElementById('tc-month') && document.getElementById('tc-month').addEventListener('change',loadTeamCard);
+document.getElementById('tc-budget-save-btn') && document.getElementById('tc-budget-save-btn').addEventListener('click',function(){
+  var ym=document.getElementById('tc-month').value;
+  var amount=Number(document.getElementById('tc-budget').value||0);
+  api('saveTeamCardBudget',{yearMonth:ym,amount:amount}).then(function(res){
+    if(res.ok){ addLog(ym+' 팀카드 예산 '+amount.toLocaleString()+'원으로 설정'); updateTcBalance(); }
+    else alert(res.error||'저장 실패');
+  });
+});
+document.getElementById('tc-card-add-btn') && document.getElementById('tc-card-add-btn').addEventListener('click',function(){
+  document.getElementById('tcc-name').value='';
+  document.getElementById('tcc-issuer').value='';
+  document.getElementById('tcc-last4').value='';
+  document.getElementById('tcc-note').value='';
+  openM('m-tc-card');
+});
+document.getElementById('tcc-cancel') && document.getElementById('tcc-cancel').addEventListener('click',function(){ closeM('m-tc-card'); });
+document.getElementById('tcc-save') && document.getElementById('tcc-save').addEventListener('click',function(){
+  var name=document.getElementById('tcc-name').value.trim();
+  if(!name){ alert('카드명을 입력해주세요.'); return; }
+  var card={name:name,issuer:document.getElementById('tcc-issuer').value.trim(),last4:document.getElementById('tcc-last4').value.trim(),note:document.getElementById('tcc-note').value.trim()};
+  api('addTeamCard',{card:card}).then(function(res){
+    if(res.ok){ addLog('팀카드 등록: '+name); closeM('m-tc-card'); loadTeamCard(); } else alert(res.error||'등록 실패');
+  });
+});
+function openTcUsageModal(id){
+  TC_EDIT_ID=id||null;
+  var cardOpts=TC_CARDS.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  document.getElementById('tcu-card').innerHTML=cardOpts||'<option value="">등록된 카드 없음</option>';
+  var empOpts='<option value="">직원 선택</option>'+TC_EMP.map(function(u){return '<option value="'+u.id+'" data-name="'+u.name+'">'+u.name+'</option>';}).join('');
+  document.getElementById('tcu-emp').innerHTML=empOpts;
+  if(id){
+    var r=TC_USAGE.find(function(x){return x.id===id;});
+    document.getElementById('tcu-title').textContent='사용내역 수정';
+    document.getElementById('tcu-date').value=r.date||'';
+    document.getElementById('tcu-card').value=r.cardId||'';
+    document.getElementById('tcu-emp').value=r.empId||'';
+    document.getElementById('tcu-desc').value=r.desc||'';
+    document.getElementById('tcu-amount').value=r.amount||'';
+    document.getElementById('tcu-note').value=r.note||'';
+  } else {
+    document.getElementById('tcu-title').textContent='사용내역 추가';
+    document.getElementById('tcu-date').value=new Date().toISOString().slice(0,10);
+    document.getElementById('tcu-desc').value='';
+    document.getElementById('tcu-amount').value='';
+    document.getElementById('tcu-note').value='';
+  }
+  openM('m-tc-usage');
+}
+document.getElementById('tc-usage-add-btn') && document.getElementById('tc-usage-add-btn').addEventListener('click',function(){ openTcUsageModal(null); });
+document.getElementById('tcu-cancel') && document.getElementById('tcu-cancel').addEventListener('click',function(){ closeM('m-tc-usage'); });
+document.getElementById('tcu-save') && document.getElementById('tcu-save').addEventListener('click',function(){
+  var date=document.getElementById('tcu-date').value;
+  var cardId=document.getElementById('tcu-card').value;
+  var empSel=document.getElementById('tcu-emp');
+  var empId=empSel.value;
+  var empName=empSel.selectedOptions[0]?empSel.selectedOptions[0].dataset.name:'';
+  var desc=document.getElementById('tcu-desc').value.trim();
+  var amount=Number(document.getElementById('tcu-amount').value||0);
+  var note=document.getElementById('tcu-note').value.trim();
+  if(!date){alert('날짜를 선택해주세요.');return;}
+  if(!cardId){alert('사용 카드를 선택해주세요.');return;}
+  if(!empId){alert('사용자를 선택해주세요.');return;}
+  if(!desc){alert('사용내역을 입력해주세요.');return;}
+  var ym=date.slice(0,7);
+  var row={yearMonth:ym,date:date,cardId:cardId,empId:empId,empName:empName,desc:desc,amount:amount,note:note};
+  var action=TC_EDIT_ID?api('updateTeamCardUsage',{id:TC_EDIT_ID,fields:row}):api('addTeamCardUsage',{row:row});
+  action.then(function(res){
+    if(!res.ok){ alert(res.error||'저장 실패'); return; }
+    addLog('팀카드 사용내역 '+(TC_EDIT_ID?'수정':'추가')+': '+desc+' ('+amount.toLocaleString()+'원)');
+    closeM('m-tc-usage');
+    loadTeamCard();
   });
 });
 </script>
