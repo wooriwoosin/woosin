@@ -988,7 +988,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbwsmT-tKzh-3GMnN6CL9BUZUoq_jNHLdyARtQVCq9uKhwbe0pwSMQn16nLcRTmzDQNvAw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -4511,10 +4511,11 @@ function prFetchAndRender(){
     var emps=empRes.employees;
     var sums={}; // empId -> {name,team,cats...,call...,availableHours,days}
     // 관리자 권한자는 리포트에서 제외 (일일 실적집계 입력 대상에서는 그대로 유지됨)
-    var adminIds={}; emps.forEach(function(u){ if(u.role==='admin') adminIds[u.id]=true; });
+    var adminIds={}; var adminNames={};
+    emps.forEach(function(u){ if((u.role||'').toString().trim()==='admin'){ adminIds[u.id]=true; adminNames[(u.name||'').trim()]=true; } });
     perfRes.rows.forEach(function(r){
       var id=r.empId;
-      if(adminIds[id]) return;
+      if(adminIds[id]||adminNames[(r.empName||'').trim()]) return;
       if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
       PR_CATS.forEach(function(c){ sums[id][c]+=Number(r[c]||0); });
       sums[id].발신콜+=Number(r.발신콜||0); sums[id].수신콜+=Number(r.수신콜||0); sums[id].땡김콜+=Number(r.땡김콜||0);
@@ -4525,8 +4526,8 @@ function prFetchAndRender(){
       sums[id].availableHours+=Math.max(0,PR_WORKDAY_HOURS-leaveH-fixH);
       sums[id].days+=1;
     });
-    // 현재 이름/팀은 직원목록 최신 정보로 덮어씀 (그 사이 팀이동/개명 있어도 최신 기준으로 표시)
-    emps.forEach(function(u){ if(sums[u.id]) { sums[u.id].name=u.name; sums[u.id].team=u.retired?'(퇴사자)':(u.team||'미지정'); } });
+    // 현재 이름/팀은 직원목록 최신 정보로 덮어씀 (그 사이 팀이동/개명 있어도 최신 기준으로 표시), 퇴사자는 퇴사일도 같이 저장
+    emps.forEach(function(u){ if(sums[u.id]) { sums[u.id].name=u.name; sums[u.id].team=u.retired?'(퇴사자)':(u.team||'미지정'); sums[u.id].retired=!!u.retired; sums[u.id].retiredAt=u.retiredAt||''; } });
     if(statusEl) statusEl.textContent=start+' ~ '+end+' · '+Object.keys(sums).length+'명 실적 있음 (근무시간 8h/일 - 연차·고정업무 시간 차감 기준 환산)';
     prRenderTable(sums);
     prRenderChart(sums);
@@ -4551,14 +4552,17 @@ function prRate(s){
 function prRenderTable(sums){
   var tbl=document.getElementById('pr-table');
   if(!tbl) return;
-  var ids=Object.keys(sums).sort(function(a,b){
+  function byRate(a,b){
     var ra=prRate(sums[a]), rb=prRate(sums[b]);
     if(ra===null&&rb===null) return 0;
     if(ra===null) return 1;
     if(rb===null) return -1;
     return rb-ra;
-  });
-  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약정갱신</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th></tr>';
+  }
+  var activeIds=Object.keys(sums).filter(function(id){return !sums[id].retired;}).sort(byRate);
+  var retiredIds=Object.keys(sums).filter(function(id){return sums[id].retired;}).sort(byRate);
+  var ids=activeIds.concat(retiredIds);
+  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약정갱신</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
   var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
   var body=ids.map(function(id){
     var s=sums[id];
@@ -4567,12 +4571,14 @@ function prRenderTable(sums){
     PR_CATS.forEach(function(c){grand[c]+=s[c];});
     grand.발신콜+=s.발신콜; grand.수신콜+=s.수신콜; grand.땡김콜+=s.땡김콜; grand.VOC+=s.VOC;
     grand.fixdurHours+=s.fixdurHours; grand.availableHours+=s.availableHours;
-    return '<tr><td class="tc">'+s.team+'</td><td style="font-weight:600">'+s.name+'</td>'+
+    var rowStyle=s.retired?' style="background:#F5F5F5;color:var(--tm)"':'';
+    return '<tr'+rowStyle+'><td class="tc">'+s.team+'</td><td style="font-weight:600">'+s.name+'</td>'+
       '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td>'+
       '<td>'+s.발신콜+'</td><td>'+s.수신콜+'</td><td>'+s.땡김콜+'</td><td>'+s.VOC+'</td>'+
       '<td style="font-weight:700">'+total+'</td>'+
       '<td>'+s.fixdurHours.toFixed(1)+'</td><td>'+s.availableHours.toFixed(1)+'</td>'+
-      '<td style="font-weight:800;color:var(--ac)">'+(rate!==null?rate.toFixed(2):'-')+'</td></tr>';
+      '<td style="font-weight:800;color:var(--ac)">'+(rate!==null?rate.toFixed(2):'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--tm)">'+(s.retired?(s.retiredAt||'-'):'')+'</td></tr>';
   }).join('');
   var grandTotal=prTotal(grand);
   var grandRate=prRate(grand);
@@ -4580,29 +4586,38 @@ function prRenderTable(sums){
     '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td>'+
     '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td>'+grandTotal+'</td>'+
     '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
-    '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td></tr>';
-  tbl.innerHTML=head+(body||'<tr><td colspan="15" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
+    '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td><td></td></tr>';
+  tbl.innerHTML=head+(body||'<tr><td colspan="16" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
 }
 function prRenderChart(sums){
   var wrap=document.getElementById('pr-chart');
   if(!wrap) return;
-  var list=Object.keys(sums).map(function(id){
+  function toBar(id){
     var s=sums[id];
-    return {name:s.name,rate:prRate(s),total:prTotal(s)};
-  }).filter(function(x){return x.rate!==null;}).sort(function(a,b){return b.rate-a.rate;});
-  if(!list.length){ wrap.innerHTML='<div style="color:var(--tm);font-size:13px;padding:10px">표시할 실적이 없습니다.</div>'; return; }
-  var max=list[0].rate;
-  wrap.innerHTML='<div style="font-size:11px;color:var(--tm);margin-bottom:8px">가용시간(연차·고정업무 시간 차감) 대비 환산실적(건/시간) 기준</div>'+
-    list.map(function(x){
+    return {name:s.name,rate:prRate(s),retired:s.retired,retiredAt:s.retiredAt};
+  }
+  var activeList=Object.keys(sums).filter(function(id){return !sums[id].retired;}).map(toBar).filter(function(x){return x.rate!==null;}).sort(function(a,b){return b.rate-a.rate;});
+  var retiredList=Object.keys(sums).filter(function(id){return sums[id].retired;}).map(toBar).filter(function(x){return x.rate!==null;}).sort(function(a,b){return b.rate-a.rate;});
+  if(!activeList.length&&!retiredList.length){ wrap.innerHTML='<div style="color:var(--tm);font-size:13px;padding:10px">표시할 실적이 없습니다.</div>'; return; }
+  var max=Math.max(activeList[0]?activeList[0].rate:0, retiredList[0]?retiredList[0].rate:0)||1;
+  function barRow(x){
     var pct=Math.max(4,Math.round(x.rate/max*100));
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px">'+
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px'+(x.retired?';opacity:.7':'')+'">'+
       '<div style="width:70px;text-align:right;flex-shrink:0">'+x.name+'</div>'+
       '<div style="flex:1;background:var(--bg);border-radius:4px;overflow:hidden;height:18px">'+
-        '<div style="width:'+pct+'%;background:var(--ac);height:100%;border-radius:4px"></div>'+
+        '<div style="width:'+pct+'%;background:'+(x.retired?'var(--tm)':'var(--ac)')+';height:100%;border-radius:4px"></div>'+
       '</div>'+
       '<div style="width:44px;font-weight:700">'+x.rate.toFixed(2)+'</div>'+
+      (x.retired?'<div style="width:90px;font-size:10.5px;color:var(--tm)">퇴사 '+(x.retiredAt||'-')+'</div>':'')+
     '</div>';
-  }).join('');
+  }
+  var html='<div style="font-size:11px;color:var(--tm);margin-bottom:8px">가용시간(연차·고정업무 시간 차감) 대비 환산실적(건/시간) 기준</div>'+
+    activeList.map(barRow).join('');
+  if(retiredList.length){
+    html+='<div style="margin-top:14px;padding-top:10px;border-top:2px dashed var(--b);font-size:11px;color:var(--tm)">📦 (퇴사자)</div>'+
+      retiredList.map(barRow).join('');
+  }
+  wrap.innerHTML=html;
 }
 document.querySelectorAll('.pr-quick').forEach(function(btn){
   btn.addEventListener('click',function(){
