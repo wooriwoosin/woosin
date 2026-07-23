@@ -982,7 +982,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbwPipF6UNbi3nGkG5gjjT75YmxrSQIG6n5I-asD73_KFujaDerg3O_FIgH8Dpf6QqdAYQ/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -4127,12 +4127,16 @@ function paPublish(){
     var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
     var c=counts[e.name]||paEmptyCounts();
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
+    var fixdurHours=(st.fixdurNames||[]).reduce(function(sum,name){
+      var fd=PA_FIXDUR.find(function(x){return x.name===name;});
+      return sum+(fd?Number(fd.hours)||0:0);
+    },0);
     return {
       empId:e.id, empName:e.name, team:e.team,
       유선신규:c.유선신규, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 기가아이즈:c.기가아이즈, 무선:c.무선,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
       땡김콜:ph.P_CONN, 땡김시간:paS2hms(ph.P_TIME),
-      고정업무:(st.fixdurNames||[]).join(', '), 연차유형:st.leave||'', VOC:st.voc||0
+      고정업무:(st.fixdurNames||[]).join(', '), 고정업무시간:fixdurHours, 연차유형:st.leave||'', VOC:st.voc||0
     };
   });
   var btn=document.getElementById('pa-publish-btn');
@@ -4472,6 +4476,8 @@ function prRangeFor(kind){
   }
   return {start:prFmtDate(s), end:prFmtDate(e)};
 }
+var PR_LEAVE_HOURS={'':0,'연차':8,'오전반차':4,'오후반차':4,'오전반반차':2,'오후반반차':2,'휴일근무':0,'공가(예비군)':8,'근무없음':0};
+var PR_WORKDAY_HOURS=8;
 function loadPerfReport(){
   var startEl=document.getElementById('pr-start'), endEl=document.getElementById('pr-end');
   if(startEl && !startEl.value){
@@ -4489,65 +4495,81 @@ function prFetchAndRender(){
     var empRes=rs[0], perfRes=rs[1];
     if(!empRes.ok||!perfRes.ok){ if(statusEl) statusEl.textContent='불러오기 실패'; return; }
     var emps=empRes.employees;
-    var sums={}; // empId -> {name,team,cats...,call...}
+    var sums={}; // empId -> {name,team,cats...,call...,availableHours,days}
     perfRes.rows.forEach(function(r){
       var id=r.empId;
-      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0};
+      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
       PR_CATS.forEach(function(c){ sums[id][c]+=Number(r[c]||0); });
       sums[id].발신콜+=Number(r.발신콜||0); sums[id].수신콜+=Number(r.수신콜||0); sums[id].땡김콜+=Number(r.땡김콜||0);
       sums[id].VOC+=Number(r.VOC||0);
+      var leaveH=PR_LEAVE_HOURS[r.연차유형]!==undefined?PR_LEAVE_HOURS[r.연차유형]:0;
+      var fixH=Number(r.고정업무시간||0);
+      sums[id].fixdurHours+=fixH;
+      sums[id].availableHours+=Math.max(0,PR_WORKDAY_HOURS-leaveH-fixH);
+      sums[id].days+=1;
     });
     // 현재 이름/팀은 직원목록 최신 정보로 덮어씀 (그 사이 팀이동/개명 있어도 최신 기준으로 표시)
     emps.forEach(function(u){ if(sums[u.id]) { sums[u.id].name=u.name; sums[u.id].team=u.retired?'(퇴사자)':(u.team||'미지정'); } });
-    if(statusEl) statusEl.textContent=start+' ~ '+end+' · '+Object.keys(sums).length+'명 실적 있음';
+    if(statusEl) statusEl.textContent=start+' ~ '+end+' · '+Object.keys(sums).length+'명 실적 있음 (근무시간 8h/일 - 연차·고정업무 시간 차감 기준 환산)';
     prRenderTable(sums);
     prRenderChart(sums);
   });
 }
+function prTotal(s){ return PR_CATS.reduce(function(sum,c){return sum+s[c];},0); }
+function prRate(s){ var t=prTotal(s); return s.availableHours>0?(t/s.availableHours):null; }
 function prRenderTable(sums){
   var tbl=document.getElementById('pr-table');
   if(!tbl) return;
   var ids=Object.keys(sums).sort(function(a,b){
-    var ta=sums[a].team, tb=sums[b].team;
-    if(ta!==tb) return ta.localeCompare(tb);
-    return sums[a].name.localeCompare(sums[b].name);
+    var ra=prRate(sums[a]), rb=prRate(sums[b]);
+    if(ra===null&&rb===null) return 0;
+    if(ra===null) return 1;
+    if(rb===null) return -1;
+    return rb-ra;
   });
-  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약정갱신</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th></tr>';
-  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0};
+  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약정갱신</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th></tr>';
+  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
   var body=ids.map(function(id){
     var s=sums[id];
-    var total=PR_CATS.reduce(function(sum,c){return sum+s[c];},0);
+    var total=prTotal(s);
+    var rate=prRate(s);
     PR_CATS.forEach(function(c){grand[c]+=s[c];});
     grand.발신콜+=s.발신콜; grand.수신콜+=s.수신콜; grand.땡김콜+=s.땡김콜; grand.VOC+=s.VOC;
+    grand.fixdurHours+=s.fixdurHours; grand.availableHours+=s.availableHours;
     return '<tr><td class="tc">'+s.team+'</td><td style="font-weight:600">'+s.name+'</td>'+
       '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td>'+
       '<td>'+s.발신콜+'</td><td>'+s.수신콜+'</td><td>'+s.땡김콜+'</td><td>'+s.VOC+'</td>'+
-      '<td style="font-weight:800;color:var(--ac)">'+total+'</td></tr>';
+      '<td style="font-weight:700">'+total+'</td>'+
+      '<td>'+s.fixdurHours.toFixed(1)+'</td><td>'+s.availableHours.toFixed(1)+'</td>'+
+      '<td style="font-weight:800;color:var(--ac)">'+(rate!==null?rate.toFixed(2):'-')+'</td></tr>';
   }).join('');
   var grandTotal=PR_CATS.reduce(function(sum,c){return sum+grand[c];},0);
+  var grandRate=grand.availableHours>0?(grandTotal/grand.availableHours):null;
   var footRow='<tr style="background:var(--bg);font-weight:800"><td colspan="2">전체 합계</td>'+
     '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td>'+
-    '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td style="color:var(--ac)">'+grandTotal+'</td></tr>';
-  tbl.innerHTML=head+(body||'<tr><td colspan="12" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
+    '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td>'+grandTotal+'</td>'+
+    '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
+    '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td></tr>';
+  tbl.innerHTML=head+(body||'<tr><td colspan="15" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
 }
 function prRenderChart(sums){
   var wrap=document.getElementById('pr-chart');
   if(!wrap) return;
   var list=Object.keys(sums).map(function(id){
     var s=sums[id];
-    var total=PR_CATS.reduce(function(sum,c){return sum+s[c];},0);
-    return {name:s.name,total:total};
-  }).filter(function(x){return x.total>0;}).sort(function(a,b){return b.total-a.total;});
+    return {name:s.name,rate:prRate(s),total:prTotal(s)};
+  }).filter(function(x){return x.rate!==null&&x.total>0;}).sort(function(a,b){return b.rate-a.rate;});
   if(!list.length){ wrap.innerHTML='<div style="color:var(--tm);font-size:13px;padding:10px">표시할 실적이 없습니다.</div>'; return; }
-  var max=list[0].total;
-  wrap.innerHTML=list.map(function(x){
-    var pct=Math.max(4,Math.round(x.total/max*100));
+  var max=list[0].rate;
+  wrap.innerHTML='<div style="font-size:11px;color:var(--tm);margin-bottom:8px">가용시간(연차·고정업무 시간 차감) 대비 환산실적(건/시간) 기준</div>'+
+    list.map(function(x){
+    var pct=Math.max(4,Math.round(x.rate/max*100));
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px">'+
       '<div style="width:70px;text-align:right;flex-shrink:0">'+x.name+'</div>'+
       '<div style="flex:1;background:var(--bg);border-radius:4px;overflow:hidden;height:18px">'+
         '<div style="width:'+pct+'%;background:var(--ac);height:100%;border-radius:4px"></div>'+
       '</div>'+
-      '<div style="width:36px;font-weight:700">'+x.total+'</div>'+
+      '<div style="width:44px;font-weight:700">'+x.rate.toFixed(2)+'</div>'+
     '</div>';
   }).join('');
 }
