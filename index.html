@@ -182,6 +182,8 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-an{background:#FAEEDA;color:#854F0B;}
 .cc-ham{background:#E1F5EE;color:#085041;}
 .cc-hpm{background:#EEF3FD;color:#185FA5;}
+.cc-h75am{background:#FDE8E8;color:#9B2226;}
+.cc-h75pm{background:#FFF0DB;color:#8A5300;}
 .cc-hham{background:#EEEDFE;color:#3C3489;}
 .cc-hhpm{background:#EEEDFE;color:#3C3489;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
@@ -384,6 +386,8 @@ table.pt td.otc{background:#FFF8F8;}
           <span class="cc cc-an" style="display:inline-block">연차</span>
           <span class="cc cc-ham" style="display:inline-block">오전반차</span>
           <span class="cc cc-hpm" style="display:inline-block">오후반차</span>
+          <span class="cc cc-h75am" style="display:inline-block">0.75차(12시퇴근)</span>
+          <span class="cc cc-h75pm" style="display:inline-block">0.75차(17시출근)</span>
           <span class="cc cc-hham" style="display:inline-block">오전반반차</span>
           <span class="cc cc-hhpm" style="display:inline-block">오후반반차</span>
           <span class="cc cc-hw" style="display:inline-block">휴일근무 (토/일)</span>
@@ -917,6 +921,8 @@ var ATYPES=[
   {k:'연차',l:'연차 (종일)',c:'cc-an'},
   {k:'오전반차',l:'오전반차',c:'cc-ham'},
   {k:'오후반차',l:'오후반차',c:'cc-hpm'},
+  {k:'0.75차(12시퇴근)',l:'0.75차 (12시퇴근, 6시간)',c:'cc-h75am'},
+  {k:'0.75차(17시출근)',l:'0.75차 (17시출근, 6시간)',c:'cc-h75pm'},
   {k:'오전반반차',l:'오전반반차',c:'cc-hham'},
   {k:'오후반반차',l:'오후반반차',c:'cc-hhpm'},
   {k:'휴일근무',l:'휴일근무',c:'cc-hw',weekendOnly:true},
@@ -982,7 +988,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzLxbHPA-bjKU7K17CySzOFcFmnOKAouoCBIQxDRG1aL1hCktWJBgBAtDdGVDZ-fIMEvw/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3621,6 +3627,7 @@ var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭�
 var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
+  {v:'0.75차(12시퇴근)',l:'0.75차(12시퇴근, 6h)',hours:6},{v:'0.75차(17시출근)',l:'0.75차(17시출근, 6h)',hours:6},
   {v:'오전반반차',l:'오전반반차',hours:2},{v:'오후반반차',l:'오후반반차',hours:2},
   {v:'휴일근무',l:'휴일근무',hours:0},{v:'공가(예비군)',l:'공가(예비군)',hours:8},
   {v:'근무없음',l:'근무없음 (휴일 미출근)',hours:0}
@@ -4476,7 +4483,7 @@ function prRangeFor(kind){
   }
   return {start:prFmtDate(s), end:prFmtDate(e)};
 }
-var PR_LEAVE_HOURS={'':0,'연차':8,'오전반차':4,'오후반차':4,'오전반반차':2,'오후반반차':2,'휴일근무':0,'공가(예비군)':8,'근무없음':0};
+var PR_LEAVE_HOURS={'':0,'연차':8,'오전반차':4,'오후반차':4,'0.75차(12시퇴근)':6,'0.75차(17시출근)':6,'오전반반차':2,'오후반반차':2,'휴일근무':0,'공가(예비군)':8,'근무없음':0};
 var PR_WORKDAY_HOURS=8;
 function loadPerfReport(){
   var startEl=document.getElementById('pr-start'), endEl=document.getElementById('pr-end');
@@ -4496,8 +4503,11 @@ function prFetchAndRender(){
     if(!empRes.ok||!perfRes.ok){ if(statusEl) statusEl.textContent='불러오기 실패'; return; }
     var emps=empRes.employees;
     var sums={}; // empId -> {name,team,cats...,call...,availableHours,days}
+    // 관리자 권한자는 리포트에서 제외 (일일 실적집계 입력 대상에서는 그대로 유지됨)
+    var adminIds={}; emps.forEach(function(u){ if(u.role==='admin') adminIds[u.id]=true; });
     perfRes.rows.forEach(function(r){
       var id=r.empId;
+      if(adminIds[id]) return;
       if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
       PR_CATS.forEach(function(c){ sums[id][c]+=Number(r[c]||0); });
       sums[id].발신콜+=Number(r.발신콜||0); sums[id].수신콜+=Number(r.수신콜||0); sums[id].땡김콜+=Number(r.땡김콜||0);
@@ -4516,7 +4526,12 @@ function prFetchAndRender(){
   });
 }
 function prTotal(s){ return PR_CATS.reduce(function(sum,c){return sum+s[c];},0); }
-function prRate(s){ var t=prTotal(s); return s.availableHours>0?(t/s.availableHours):null; }
+function prRate(s){
+  var t=prTotal(s);
+  if(s.availableHours>0) return t/s.availableHours;
+  if(t>0) return t; // 가용시간이 0(고정업무로 꽉 참)인데도 실적이 있으면, 시간외로 해낸 성과라 오히려 매우 높은 효율로 인정
+  return null; // 가용시간도 0이고 실적도 0이면 (예: 종일 연차) 순위 계산에서 제외
+}
 function prRenderTable(sums){
   var tbl=document.getElementById('pr-table');
   if(!tbl) return;
