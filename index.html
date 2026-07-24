@@ -695,6 +695,29 @@ table.pt td.otc{background:#FFF8F8;}
         </div>
       </div>
     </div>
+    <!-- 로그 (대표관리자 전용) -->
+    <div class="pg" id="pg-logs">
+      <div class="dbar" style="margin-bottom:14px;flex-wrap:wrap;gap:6px">
+        <button class="btn btn-se btn-sm log-quick" data-range="today">오늘</button>
+        <button class="btn btn-pr btn-sm log-quick" data-range="last7">최근 7일</button>
+        <button class="btn btn-se btn-sm log-quick" data-range="last30">최근 30일</button>
+        <button class="btn btn-se btn-sm log-quick" data-range="thismonth">이번달</button>
+        <span style="margin-left:8px">|</span>
+        <input type="date" id="log-start">
+        <span>~</span>
+        <input type="date" id="log-end">
+        <button class="btn btn-pr btn-sm" id="log-apply-btn">조회</button>
+        <span id="log-status" style="margin-left:auto;font-size:12px;color:var(--tm)"></span>
+      </div>
+      <div class="card" style="margin-top:0">
+        <div class="cttl" style="margin-bottom:10px;font-size:14px">🔐 접속이력</div>
+        <div style="overflow-x:auto"><table class="pt" id="log-access-table"></table></div>
+      </div>
+      <div class="card">
+        <div class="cttl" style="margin-bottom:10px;font-size:14px">📝 변경 로그</div>
+        <div style="overflow-x:auto"><table class="pt" id="log-change-table"></table></div>
+      </div>
+    </div>
     <!-- 설정 -->
     <div class="pg" id="pg-settings">
       <div class="card" style="margin-top:0">
@@ -988,7 +1011,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzrx62WW7ZJKbEo0PsQUbJsJe8XphKFWextFmnnCRXEzk1Ar1PYx4BIrjwl119d2RCB5g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -1335,6 +1358,10 @@ function doLogin(){
     CU=res.user;
     sessionStorage.setItem('cu',JSON.stringify(CU));
     showApp();
+    // 접속이력 기록 (실패해도 로그인 자체엔 영향 없도록 별도 처리)
+    fetch('https://api.ipify.org?format=json').then(function(r){return r.json();}).then(function(ipRes){
+      api('logAccess',{empId:CU.id,empName:CU.name,ip:ipRes.ip});
+    }).catch(function(){ api('logAccess',{empId:CU.id,empName:CU.name,ip:''}); });
   });
 }
 
@@ -1375,12 +1402,14 @@ function showApp(){
       {id:'settings',l:'⚙️ 설정',p:'pg-settings'}
     ];
     if(CU.teamCardAdmin) adminTabs.splice(6,0,{id:'teamcard',l:'💳 팀카드관리',p:'pg-teamcard'});
+    if(CU.superAdmin) adminTabs.push({id:'logs',l:'🗂️ 로그',p:'pg-logs'});
     renderTabs(adminTabs);
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'allperf';
       var validTabs=['allperf','perfreport','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
       if(CU.teamCardAdmin) validTabs.push('teamcard');
+      if(CU.superAdmin) validTabs.push('logs');
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
     });
   } else {
@@ -1449,6 +1478,7 @@ function switchTab(id){
   if(id==='seats') loadSeats();
   if(id==='accounts') loadAccounts();
   if(id==='teamcard') loadTeamCard();
+  if(id==='logs') loadLogs();
   if(id==='perfreport') loadPerfReport();
   if(id==='ip') loadIPs();
   if(id==='myinfo') loadMyInfo();
@@ -3049,6 +3079,10 @@ function openEmpD(id){
         '<input type="checkbox" id="ed-teamcard" style="width:16px;height:16px;accent-color:var(--ac)"'+(u.teamCardAdmin?' checked':'')+'>'+
         '<span>💳 팀카드관리 권한<\/span>'+
       '<\/label><\/div>'):'')+
+      (u.role==='admin'?('<div class="fg"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
+        '<input type="checkbox" id="ed-superadmin" style="width:16px;height:16px;accent-color:var(--ac)"'+(u.superAdmin?' checked':'')+'>'+
+        '<span>🗂️ 대표관리자 권한 (로그 메뉴 열람)<\/span>'+
+      '<\/label><\/div>'):'')+
       '<div class="slbl">보유 스킬 (관리자 전용 · 온오프)<\/div>'+
       buildSkillTogglesHtml(u.skills||{})+
       '<div class="slbl">계정 정보 (관리자 수정 가능)<\/div>'+
@@ -3116,7 +3150,8 @@ function saveEmpFromModal(){
     ext:extVal,
     skills:skills,
     role:isAdmin?'admin':'employee',
-    teamCardAdmin:(isAdmin&&document.getElementById('ed-teamcard')&&document.getElementById('ed-teamcard').checked)?'Y':'N'
+    teamCardAdmin:(isAdmin&&document.getElementById('ed-teamcard')&&document.getElementById('ed-teamcard').checked)?'Y':'N',
+    superAdmin:(isAdmin&&document.getElementById('ed-superadmin')&&document.getElementById('ed-superadmin').checked)?'Y':'N'
   };
   ['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw'].forEach(function(k){
     var el=document.getElementById('ed-'+k);
@@ -4025,7 +4060,7 @@ function paRenderResult(){
       '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
         '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
       '<div class="pa-counts">'+fixPill+
-        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,undefined,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
+        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,'약갱/업셀',e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
         callPills+
       '</div></div>';
   }
@@ -4214,7 +4249,7 @@ function loadAllPerfNewRender(){
         return '<div class="pa-emp-card">'+
           '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div><div class="pa-controls">'+leaveBadge+fixBadge+
             (p.VOC?'<span class="pa-voc-wrap">VOC '+p.VOC+'</span>':'')+'</div></div>'+
-          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,'약정갱신','pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
+          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,'약갱/업셀','pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
         '</div>';
       }).join('');
       return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
@@ -4562,7 +4597,7 @@ function prRenderTable(sums){
   var activeIds=Object.keys(sums).filter(function(id){return !sums[id].retired;}).sort(byRate);
   var retiredIds=Object.keys(sums).filter(function(id){return sums[id].retired;}).sort(byRate);
   var ids=activeIds.concat(retiredIds);
-  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약정갱신</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
+  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약갱/업셀</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
   var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
   var body=ids.map(function(id){
     var s=sums[id];
@@ -4628,6 +4663,58 @@ document.querySelectorAll('.pr-quick').forEach(function(btn){
   });
 });
 document.getElementById('pr-apply-btn') && document.getElementById('pr-apply-btn').addEventListener('click',prFetchAndRender);
+
+// ══════════════════════════════════════════════
+// 로그 (대표관리자 전용) - 접속이력 + 변경로그
+// ══════════════════════════════════════════════
+function logRangeFor(kind){
+  var now=new Date(), s, e=new Date(now);
+  if(kind==='today'){ s=new Date(now); }
+  else if(kind==='last7'){ s=new Date(now); s.setDate(now.getDate()-6); }
+  else if(kind==='last30'){ s=new Date(now); s.setDate(now.getDate()-29); }
+  else if(kind==='thismonth'){ s=new Date(now.getFullYear(),now.getMonth(),1); }
+  return {start:prFmtDate(s), end:prFmtDate(e)};
+}
+function loadLogs(){
+  var startEl=document.getElementById('log-start'), endEl=document.getElementById('log-end');
+  if(startEl && !startEl.value){
+    var r=logRangeFor('last7');
+    startEl.value=r.start; endEl.value=r.end;
+  }
+  logFetchAndRender();
+}
+function logFetchAndRender(){
+  var start=document.getElementById('log-start').value, end=document.getElementById('log-end').value;
+  if(!start||!end) return;
+  var statusEl=document.getElementById('log-status');
+  if(statusEl) statusEl.textContent='불러오는 중...';
+  Promise.all([api('getAccessLog',{startDate:start,endDate:end}), api('getChangeLogRange',{startDate:start,endDate:end})]).then(function(rs){
+    var accRes=rs[0], chgRes=rs[1];
+    if(!accRes.ok||!chgRes.ok){ if(statusEl) statusEl.textContent='불러오기 실패'; return; }
+    if(statusEl) statusEl.textContent=start+' ~ '+end+' · 접속 '+accRes.logs.length+'건 · 변경 '+chgRes.logs.length+'건';
+    var accTbl=document.getElementById('log-access-table');
+    var accHead='<tr><th>접속일시</th><th>이름</th><th>IP</th></tr>';
+    var accBody=accRes.logs.map(function(l){
+      return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.empName+'</td><td style="font-family:monospace">'+(l.ip||'-')+'</td></tr>';
+    }).join('');
+    accTbl.innerHTML=accHead+(accBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 접속이력이 없습니다.</td></tr>');
+    var chgTbl=document.getElementById('log-change-table');
+    var chgHead='<tr><th>수정일시</th><th>수정자</th><th>수정내용</th></tr>';
+    var chgBody=chgRes.logs.map(function(l){
+      return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.by+'</td><td class="tdl">'+l.desc+'</td></tr>';
+    }).join('');
+    chgTbl.innerHTML=chgHead+(chgBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 변경 내역이 없습니다.</td></tr>');
+  });
+}
+document.querySelectorAll('.log-quick').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var r=logRangeFor(btn.dataset.range);
+    document.getElementById('log-start').value=r.start;
+    document.getElementById('log-end').value=r.end;
+    logFetchAndRender();
+  });
+});
+document.getElementById('log-apply-btn') && document.getElementById('log-apply-btn').addEventListener('click',logFetchAndRender);
 </script>
 </body>
 </html>
