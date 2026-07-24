@@ -1011,7 +1011,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbzrx62WW7ZJKbEo0PsQUbJsJe8XphKFWextFmnnCRXEzk1Ar1PYx4BIrjwl119d2RCB5g/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -4690,7 +4690,11 @@ function logFetchAndRender(){
   if(statusEl) statusEl.textContent='불러오는 중...';
   Promise.all([api('getAccessLog',{startDate:start,endDate:end}), api('getChangeLogRange',{startDate:start,endDate:end})]).then(function(rs){
     var accRes=rs[0], chgRes=rs[1];
-    if(!accRes.ok||!chgRes.ok){ if(statusEl) statusEl.textContent='불러오기 실패'; return; }
+    if(!accRes||!accRes.ok||!chgRes||!chgRes.ok){
+      var errMsg=(accRes&&accRes.error)||(chgRes&&chgRes.error)||'알 수 없는 오류 (Code.gs가 최신 버전으로 배포됐는지 확인해주세요)';
+      if(statusEl) statusEl.textContent='불러오기 실패: '+errMsg;
+      return;
+    }
     if(statusEl) statusEl.textContent=start+' ~ '+end+' · 접속 '+accRes.logs.length+'건 · 변경 '+chgRes.logs.length+'건';
     var accTbl=document.getElementById('log-access-table');
     var accHead='<tr><th>접속일시</th><th>이름</th><th>IP</th></tr>';
@@ -4704,6 +4708,8 @@ function logFetchAndRender(){
       return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.by+'</td><td class="tdl">'+l.desc+'</td></tr>';
     }).join('');
     chgTbl.innerHTML=chgHead+(chgBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 변경 내역이 없습니다.</td></tr>');
+  }).catch(function(err){
+    if(statusEl) statusEl.textContent='불러오기 실패: '+(err&&err.message?err.message:'네트워크 오류');
   });
 }
 document.querySelectorAll('.log-quick').forEach(function(btn){
