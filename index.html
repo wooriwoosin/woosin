@@ -1011,7 +1011,7 @@ var D_SEATS = JSON.parse(localStorage.getItem('seats_v2')||'null') || {
 var D_CHGLOG = [];
 
 // ── 데모 데이터 ───────────────────────────────
-var GAS_URL='https://script.google.com/macros/s/AKfycbxlee7Yyca1vJ7GJHNE20b_w9oHPakolnjAd7w-1qPRDVXs7lrzVqJl6V8j8TbG_kM0IA/exec';
+var GAS_URL='https://script.google.com/macros/s/AKfycby60KlD6lrcdT23ndPHdlWXoPjqM0Q2VOC5glMBJQDPOjJBbdHgjhARyz1HHBHeEs52QQ/exec';
 var CU=null;
 var DU=[
   {id:'admin',name:'관리자1',pw:'admin1234',role:'admin',color:'#534AB7',hire:'',phone:'',team:'경영지원',rank:'팀장',duty:'',cid1:'',cpw1:'',idms1:'',cid2:'',cpw2:'',idms2:'',bph:'',doc:'',s1:'',pcpw:'',pcpwDate:''},
@@ -3774,6 +3774,18 @@ function paFindStaffFromRows(rows,targetDate){
   var best=paPickBestEntry(entries,null,targetDate);
   return best?{name:best.name,ts:best.ts,content:best.content}:null;
 }
+// TV 단독 업셀링(KT_티_업셀링/전환) 전용 판별: "모든G 계약변경완", "모든G 변경완료" 등 "변경완" 패턴이
+// 있는 메모만 확실한 증거로 인정한다. 정해진 양식이 따로 없는 짧은 메모라 일반 판별 로직(정식템플릿/실질내용
+// 우선순위)으로는 신뢰할 수 없어서, 이 패턴이 없으면 아예 null을 반환해 수동 확인 대상으로 넘긴다.
+function paFindTvUpsellStaff(rows,targetDate){
+  var allEntries=[];
+  rows.forEach(function(r){ paExtractEntries(r['고객이력']).forEach(function(e){ allEntries.push(e); }); });
+  var entries=allEntries.filter(function(e){return paIsInternalName(e.name)&&/변경완/.test(e.content);});
+  if(targetDate) entries=entries.filter(function(e){return e.ts.slice(0,10)<=targetDate;});
+  if(!entries.length) return null;
+  entries.sort(function(a,b){return b.ts.localeCompare(a.ts);});
+  return {name:entries[0].name,ts:entries[0].ts,content:entries[0].content};
+}
 // 유선 상품명 분류: KT 계열 + 유선기타_(KT-biz)*만 포함, 그 외(타통신사/렌탈/모바일/부가상품/정산관련 등)는 전부 제외(null)
 function paClassifyWiredProduct(name){
   name=name||'';
@@ -3826,9 +3838,9 @@ function paAggregate(){
         PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'취소/보류 상태이고 서비스번호·접속번호·일정 등 정식 접수이력이 전혀 없음 (접수 전 취소로 판단)'});
         return;
       }
-      var best=paFindStaffFromRows(eligibleRows,targetDate);
+      var best=g.isTvUpsell?paFindTvUpsellStaff(eligibleRows,targetDate):paFindStaffFromRows(eligibleRows,targetDate);
       if(best) addCount(best.name,cat,g.name,best.ts,best.content);
-      else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:'담당자 메모 없음/판별 불가',key:key});
+      else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key});
     });
   }
   var wiredGroups={};
@@ -3837,7 +3849,11 @@ function paAggregate(){
     if(!cat) return;
     if(!paStatusQualifies(cat,r['개통상태'])) return;
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
-    var key=custKey+'|'+cat; (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat}).rows.push(r);
+    // TV 단독 업셀링(KT_티_업셀링/전환)은 인터넷 업셀링(KT_인_업셀링/전환)과 별개 실적이므로
+    // 같은 "약정갱신" 카테고리 안에서도 서브그룹을 나눠 중복 없이 따로 카운팅한다.
+    var isTvUpsell=(r['상품명']==='KT_티_업셀링/전환');
+    var key=custKey+'|'+cat+(isTvUpsell?'|tvupsell':'');
+    (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat,isTvUpsell:isTvUpsell}).rows.push(r);
   });
   var byCat={};
   Object.keys(wiredGroups).forEach(function(key){ var cat=wiredGroups[key].cat; (byCat[cat]=byCat[cat]||{})[key]=wiredGroups[key]; });
