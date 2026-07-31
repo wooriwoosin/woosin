@@ -602,13 +602,14 @@ table.pt td.otc{background:#FFF8F8;}
           <div style="font-size:14px;font-weight:700;color:var(--ac);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--al)">🏢 2층</div>
           <!-- 창문 -->
           <div style="background:#E0F2FE;border:1.5px solid #7DD3FC;border-radius:6px;padding:3px 0;text-align:center;font-size:11px;font-weight:600;color:#0369A1;margin-bottom:10px;letter-spacing:2px">창 문</div>
-          <!-- 2층 배치: 좌측 L자(큰+작은) / 우측 3칸 세로 -->
+          <!-- 2층 배치: 좌측 L자(큰+작은, 작은자리 옆 전산프린터) / 우측 3칸 세로 -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">
             <!-- 좌측 L자형 -->
             <div>
               <div id="s2-L1" class="seat-card" data-sid="s2-L1"></div>
-              <div style="padding-left:0;margin-top:6px">
+              <div style="display:flex;gap:6px;align-items:stretch;margin-top:6px">
                 <div id="s2-L2" class="seat-card" data-sid="s2-L2" style="width:60%"></div>
+                <div style="background:#F3F4F6;border:1.5px solid #9CA3AF;border-radius:8px;padding:6px 4px;text-align:center;font-size:10px;font-weight:600;color:#4B5563;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">🖥️<br><span style="font-size:9px">전산<br>프린터</span></div>
               </div>
             </div>
             <!-- 우측 3칸 세로 -->
@@ -625,17 +626,13 @@ table.pt td.otc{background:#FFF8F8;}
           <div style="font-size:14px;font-weight:700;color:var(--ok);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #D1FAE5">🏢 1층</div>
           <!-- 창문 -->
           <div style="background:#E0F2FE;border:1.5px solid #7DD3FC;border-radius:6px;padding:3px 0;text-align:center;font-size:11px;font-weight:600;color:#0369A1;margin-bottom:10px;letter-spacing:2px">창 문</div>
-          <!-- 1층 배치: 좌측(L1~L3 / L4+전산프린터 나란히 / 프린터 / L5) / 우측 R1~R5 -->
+          <!-- 1층 배치: 좌측(L1~L3 / 프린터 / L4) / 우측 R1~R5 (전산프린터는 2층 좌②로 이동) -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">
             <!-- 좌측 -->
             <div style="display:flex;flex-direction:column;gap:6px">
               <div id="s1-L1" class="seat-card" data-sid="s1-L1"></div>
               <div id="s1-L2" class="seat-card" data-sid="s1-L2"></div>
-              <!-- L3 + 전산프린터 나란히 (구 L4) -->
-              <div style="display:flex;gap:6px;align-items:stretch">
-                <div id="s1-L3" class="seat-card" data-sid="s1-L3" style="flex:1"></div>
-                <div style="background:#F3F4F6;border:1.5px solid #9CA3AF;border-radius:8px;padding:6px 4px;text-align:center;font-size:10px;font-weight:600;color:#4B5563;min-width:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">🖥️<br><span style="font-size:9px">전산<br>프린터</span></div>
-              </div>
+              <div id="s1-L3" class="seat-card" data-sid="s1-L3"></div>
               <div style="background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:8px;padding:8px;text-align:center;font-size:11px;font-weight:600;color:#92400E">🖨️ 프린터</div>
               <div id="s1-L4" class="seat-card" data-sid="s1-L4"></div>
             </div>
