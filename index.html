@@ -189,7 +189,7 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
 .cc-hw{background:#E8ECF7;color:#2A3A7A;}
 .cc-gg{background:#E6F4EA;color:#1B6B3A;}
-.cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;}
+.cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;max-height:min(480px,calc(100vh - 20px));overflow-y:auto;}
 .cpop.open{display:block;}
 .cpop h4{font-size:13px;font-weight:600;margin-bottom:10px;}
 .at-btn{padding:7px 12px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid var(--b);background:var(--bg);text-align:left;font-family:inherit;transition:all .15s;display:block;width:100%;margin-bottom:5px;}
@@ -307,6 +307,7 @@ table.pt td.otc{background:#FFF8F8;}
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">유선 접수</label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">무선 접수</label><br><input type="file" id="pa-wireless-file" accept=".xls,.xlsx,.csv"><div id="pa-wireless-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">전화(CTI)</label><br><input type="file" id="pa-phone-file" accept=".xls,.xlsx,.csv"><div id="pa-phone-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">TV약정갱신</label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
       </div>
@@ -1761,22 +1762,34 @@ function makeDayEl(ds,dayNum,other){
   return el;
 }
 
+// 팝오버를 실제 렌더링된 크기 기준으로 화면 안에 들어오게 위치 지정
+// (항목 개수와 무관하게, 어느 위치에서 클릭하든 팝오버가 항상 화면 안에 들어오고
+//  넘치는 내용은 .cpop의 max-height+overflow-y:auto로 스크롤되어 전부 보임)
+function positionCPop(cx,cy){
+  var pop=document.getElementById('cpop');
+  var margin=8;
+  pop.classList.add('open'); // 실제 크기를 재려면 먼저 표시돼 있어야 함
+  var w=pop.offsetWidth, h=pop.offsetHeight;
+  var x=cx+margin, y=cy+margin;
+  if(x+w>window.innerWidth-margin) x=cx-w-margin;
+  if(x<margin) x=margin;
+  if(y+h>window.innerHeight-margin) y=window.innerHeight-h-margin;
+  if(y<margin) y=margin;
+  pop.style.left=x+'px'; pop.style.top=y+'px';
+}
 function openCPop(date,e){
   e.stopPropagation(); popDate=date;
   var pop=document.getElementById('cpop');
   var isAdmin=CU.role==='admin';
   var empWrap=document.getElementById('cpop-emp-wrap');
   var empSel=document.getElementById('cpop-emp-sel');
+  var cx=e.clientX, cy=e.clientY;
 
   // 연차 등록/변경은 관리자만 가능 — 직원은 조회만 가능
   if(!isAdmin){
     empWrap.style.display='none';
     refreshCPopState(date);
-    var margin0=8,x0=e.clientX+margin0,y0=e.clientY+margin0;
-    if(x0+240>window.innerWidth) x0=e.clientX-240-margin0;
-    if(y0+300>window.innerHeight) y0=e.clientY-300-margin0;
-    pop.style.left=x0+'px'; pop.style.top=y0+'px';
-    pop.classList.add('open');
+    positionCPop(cx,cy);
     return;
   }
 
@@ -1790,6 +1803,7 @@ function openCPop(date,e){
     // 전체 직원 목록에서 이미 있는 사람 제외하고 추가
     (_seatUsers||[]).filter(function(u){return !cAn.find(function(a){return a.empId===u.id;})&&u.id!==CU.id;}).map(function(u){return {empId:u.id,empName:u.name};})
   ));
+  positionCPop(cx,cy); // 우선 대략적인 위치로 표시
   // 전체 직원으로 채우기
   api('getAllUsers',{}).then(function(r){
     if(!r.ok) return;
@@ -1801,13 +1815,8 @@ function openCPop(date,e){
       empSel.appendChild(opt);
     });
     refreshCPopState(date);
+    positionCPop(cx,cy); // 내용이 다 채워진 뒤 실제 높이 기준으로 다시 보정
   });
-
-  var margin=8,x=e.clientX+margin,y=e.clientY+margin;
-  if(x+240>window.innerWidth) x=e.clientX-240-margin;
-  if(y+300>window.innerHeight) y=e.clientY-300-margin;
-  pop.style.left=x+'px'; pop.style.top=y+'px';
-  pop.classList.add('open');
 
   // 관리자가 직원 바꾸면 연차 상태 갱신
   empSel.onchange=function(){refreshCPopState(date);};
@@ -3652,7 +3661,7 @@ function loadMyPerf(){
 // 실적집계 (관리자 전용) + 전체실적 (읽기전용)
 // ══════════════════════════════════════════════
 var PA_EMP=[]; // {id,name,team}
-var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[];
+var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[], PA_TVRENEW_ROWS=[];
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
 var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_EXCLUDED=[];
 var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭제 가능하도록 리스트로 관리)
@@ -3792,6 +3801,10 @@ function paClassifyWiredProduct(name){
   if(name==='KT_TV'||name==='KT_인터넷'||name==='KT_인터넷전화'||name==='KT_일반전화') return '유선신규';
   return null; // 그 외 전부 제외 (SKT/SKB/LGU+/SKYLIFE/HelloVision/렌탈/모바일/KT_부가상품/정산관련/추가지급 등)
 }
+// '약정갱신' 카테고리 안에서 TV 계열(TV약정갱신/TV단독업셀) vs 인터넷 계열(인터넷약정갱신/인업셀)을 구분 — 실적집계 화면에 인/티 소계를 따로 보여주기 위함
+function paIsTvRenewalProduct(name){
+  return name==='KT_TV(약정갱신)'||name==='KT_티_업셀링/전환';
+}
 function paStatusQualifies(category,status){
   return true; // 모든 카테고리 상태 무관 - 이력에서 담당자 유무/정식이력 유무로 판단 (paIsCancelledBeforeRealWork)
 }
@@ -3806,14 +3819,15 @@ function paIsCancelledBeforeRealWork(status,history){
   return !hasTemplate;
 }
 var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선'];
-function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); return c; }
+function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); c.약정갱신_TV=0; c.약정갱신_인터넷=0; return c; }
 
 function paAggregate(){
   var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[]; PA_EXCLUDED=[];
   var targetDate=(document.getElementById('pa-date')||{}).value||'';
-  function addCount(name,cat,customer,ts,content){
+  function addCount(name,cat,customer,ts,content,isTv){
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cat]++;
+    if(cat==='약정갱신'){ if(isTv) counts[name].약정갱신_TV++; else counts[name].약정갱신_인터넷++; }
     var ek=name+'|'+cat; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
     PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' ('+cat+')');
@@ -3836,12 +3850,21 @@ function paAggregate(){
         return;
       }
       var best=g.isTvUpsell?paFindTvUpsellStaff(eligibleRows,targetDate):paFindStaffFromRows(eligibleRows,targetDate);
-      if(best) addCount(best.name,cat,g.name,best.ts,best.content);
-      else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key});
+      if(!best){ PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key}); return; }
+      if(cat==='약정갱신'){
+        // 그룹 안에 TV약정갱신/인터넷약정갱신 행이 섞여 있을 수 있으므로(하이브리드 갱신 등) 담당자는 그룹 전체 이력으로
+        // 한 번만 판별하되, 카운트는 실제 상품행 단위로 각각(TV행 1건→TV 1건, 인터넷행 1건→인터넷 1건) 반영한다.
+        eligibleRows.forEach(function(r){ addCount(best.name,cat,g.name,best.ts,best.content,paIsTvRenewalProduct(r['상품명'])); });
+      } else {
+        addCount(best.name,cat,g.name,best.ts,best.content,false);
+      }
     });
   }
   var wiredGroups={};
-  PA_WIRED_ROWS.forEach(function(r){
+  // TV약정갱신 전용 파일(개통일 기준 다운로드분)은 오늘 집계일(=선택한 개통일)과 개통일이 일치하는 행만
+  // 유선접수 원본에 합쳐서 같은 방식으로 처리한다 — 접수일 기반 필터는 적용하지 않고, 개통일=집계일인 행만 그대로 반영.
+  var tvRenewRowsForDate=PA_TVRENEW_ROWS.filter(function(r){ return targetDate&&(r['개통일']||'').slice(0,10)===targetDate; });
+  PA_WIRED_ROWS.concat(tvRenewRowsForDate).forEach(function(r){
     var cat=paClassifyWiredProduct(r['상품명']);
     if(!cat) return;
     if(!paStatusQualifies(cat,r['개통상태'])) return;
@@ -3958,6 +3981,16 @@ document.getElementById('pa-wireless-file') && document.getElementById('pa-wirel
     paRenderResult();
   });
 });
+// TV약정갱신 전용 목록(개통일 기준 다운로드) - 접수일과 무관하게 개통일=집계일인 행만 그날 실적으로 반영됨(paAggregate 참고)
+document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrenew-file').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  paParseHtmlXls(f,function(rows,err){
+    if(err){ document.getElementById('pa-tvrenew-status').textContent='❌ '+err; return; }
+    PA_TVRENEW_ROWS=rows;
+    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 불러옴';
+    paRenderResult();
+  });
+});
 document.getElementById('pa-phone-file') && document.getElementById('pa-phone-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
   var reader=new FileReader();
@@ -4069,11 +4102,15 @@ function paRenderResult(){
       countPill(c,'수신','pa-c-call',phoneStat.I_CONN,'수신 '+paS2hms(phoneStat.I_TIME))+
       countPill(c,'땡김','pa-c-call',phoneStat.P_CONN,'땡김 '+paS2hms(phoneStat.P_TIME)) : '';
 
+    // 약갱/업셀 소계: 총건수 옆에 인터넷/TV 구분 건수를 같이 표시 (예: 30건 "약갱/업셀 (인20/티10)")
+    var renewTotal=c.약정갱신||0, renewNet=c.약정갱신_인터넷||0, renewTv=c.약정갱신_TV||0;
+    var renewLabel='약갱/업셀'+(renewTotal>0?(' (인'+renewNet+'/티'+renewTv+')'):'');
+
     return '<div class="pa-emp-card">'+
       '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
         '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
       '<div class="pa-counts">'+fixPill+
-        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,'약갱/업셀',e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
+        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,renewLabel,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
         callPills+
       '</div></div>';
   }
@@ -4157,7 +4194,11 @@ function paRenderResult(){
     });
   }
   var st=document.getElementById('pa-calc-status');
-  if(st) st.textContent='유선 '+PA_WIRED_ROWS.length+'건 / 무선 '+PA_WIRELESS_ROWS.length+'건 로드됨 · '+new Date().toLocaleTimeString('ko-KR');
+  var pDate=(document.getElementById('pa-date')||{}).value||'';
+  var tvTodayCnt=PA_TVRENEW_ROWS.filter(function(r){return pDate&&(r['개통일']||'').slice(0,10)===pDate;}).length;
+  if(st) st.textContent='유선 '+PA_WIRED_ROWS.length+'건 / 무선 '+PA_WIRELESS_ROWS.length+'건'+
+    (PA_TVRENEW_ROWS.length?(' / TV약정갱신 '+PA_TVRENEW_ROWS.length+'건 중 개통일 '+(pDate||'-')+' 해당 '+tvTodayCnt+'건 반영'):'')+
+    ' 로드됨 · '+new Date().toLocaleTimeString('ko-KR');
   var ev=document.getElementById('pa-evidence'); if(ev) ev.innerHTML='';
 }
 // 카운트 pill 클릭 시 근거 표시 (전역에서 접근 가능하도록 window에 등록)
