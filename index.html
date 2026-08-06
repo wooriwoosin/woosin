@@ -1674,9 +1674,18 @@ function updateCalHint(){
   else el.textContent='※ 날짜 클릭 → 연차 현황 조회 (등록은 관리자만 가능)';
 }
 function initCal(){cY=new Date().getFullYear();cM=new Date().getMonth();}
+// 시스템 도입 초기라 지난달 이전엔 유의미한 데이터가 없으므로, 일단 "전월까지만" 뒤로 넘어갈 수 있게 제한
+function calMinYM(){
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth()-1;
+  if(m<0){m=11;y--;}
+  return y*12+m;
+}
 function moveCal(d){
-  if(d===0){cY=new Date().getFullYear();cM=new Date().getMonth();}
-  else{cM+=d;if(cM<0){cM=11;cY--;}if(cM>11){cM=0;cY++;}}
+  if(d===0){cY=new Date().getFullYear();cM=new Date().getMonth();loadCal();return;}
+  var ny=cY,nm=cM+d;
+  if(nm<0){nm=11;ny--;} if(nm>11){nm=0;ny++;}
+  if(d<0 && ny*12+nm<calMinYM()) return; // 전월보다 더 과거로는 이동하지 않음
+  cY=ny;cM=nm;
   loadCal();
 }
 function ymOf(y,m){return y+'-'+String(m+1).padStart(2,'0');}
@@ -1704,6 +1713,8 @@ function prefetchCalMonth(y,m){
 function loadCal(){
   var ym=cY+'-'+String(cM+1).padStart(2,'0');
   document.getElementById('cal-ttl').textContent=cY+'년 '+(cM+1)+'월';
+  var prevBtn=document.getElementById('cal-prev');
+  if(prevBtn) prevBtn.disabled=(cY*12+cM<=calMinYM());
   var grid=document.getElementById('cal-grid');
   if(grid && !grid.children.length){grid.innerHTML='<div class="ldg" style="grid-column:1/-1">'+ldg()+'<\/div>';}
   var isOld=calMonthIsOld(cY,cM);
@@ -4316,9 +4327,14 @@ document.getElementById('pa-date') && document.getElementById('pa-date').addEven
 function loadAllPerfNew(){
   var dateEl=document.getElementById('ap-date');
   if(dateEl && !dateEl.value){
-    // 최초 로드 시: 오늘 데이터가 아직 없을 수 있으니(다음날 오전 입력) 게시된 가장 최근 날짜로 진입
+    var todayStr=new Date().toISOString().slice(0,10);
+    // 최초 로드 시: 오늘 데이터가 아직 없을 수 있으니(다음날 오전 입력) 게시된 가장 최근 날짜로 진입.
+    // 단, 너무 오래전(1주일 이상 지난) 날짜로 뜬금없이 진입하지 않도록 최근 1주일 이내일 때만 그 날짜를 쓰고, 아니면 오늘로.
     api('getLatestPerfDate',{}).then(function(r){
-      dateEl.value=(r.ok&&r.date)?r.date:new Date().toISOString().slice(0,10);
+      var weekAgo=new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+      var weekAgoStr=weekAgo.toISOString().slice(0,10);
+      var d=(r.ok&&r.date)?r.date:null;
+      dateEl.value=(d&&d>=weekAgoStr)?d:todayStr;
       loadAllPerfNewRender();
     });
     return;
