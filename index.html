@@ -189,7 +189,7 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
 .cc-hw{background:#E8ECF7;color:#2A3A7A;}
 .cc-gg{background:#E6F4EA;color:#1B6B3A;}
-.cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;}
+.cpop{display:none;position:fixed;background:var(--s);border:1.5px solid var(--b);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);padding:14px;min-width:220px;z-index:400;max-height:min(480px,calc(100vh - 20px));overflow-y:auto;}
 .cpop.open{display:block;}
 .cpop h4{font-size:13px;font-weight:600;margin-bottom:10px;}
 .at-btn{padding:7px 12px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid var(--b);background:var(--bg);text-align:left;font-family:inherit;transition:all .15s;display:block;width:100%;margin-bottom:5px;}
@@ -307,6 +307,7 @@ table.pt td.otc{background:#FFF8F8;}
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">유선 접수</label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">무선 접수</label><br><input type="file" id="pa-wireless-file" accept=".xls,.xlsx,.csv"><div id="pa-wireless-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">전화(CTI)</label><br><input type="file" id="pa-phone-file" accept=".xls,.xlsx,.csv"><div id="pa-phone-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">TV약정갱신</label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
       </div>
@@ -706,6 +707,7 @@ table.pt td.otc{background:#FFF8F8;}
         <button class="btn btn-pr btn-sm" id="log-apply-btn">조회</button>
         <span id="log-status" style="margin-left:auto;font-size:12px;color:var(--tm)"></span>
       </div>
+      <div id="log-archive-wrap" style="margin-bottom:14px"></div>
       <div class="card" style="margin-top:0">
         <div class="cttl" style="margin-bottom:10px;font-size:14px">🔐 접속이력</div>
         <div style="overflow-x:auto"><table class="pt" id="log-access-table"></table></div>
@@ -1032,12 +1034,12 @@ var CACHE_TTL=30000; // 30초 (직원목록 등)
 var CACHE_TTL_SHORT=20000; // 20초 (실적 등 자주 바뀌는 캐시)
 // 캐시 대상 액션 (읽기 전용 + 자주 안 바뀌는 것)
 var CACHEABLE=['getAllUsers','getEmployees','getSeats','getIPGroups','getCalNotice','getSettings'];
-var CACHEABLE_SHORT=['getPerfs','getAnnuals']; // 짧은 TTL 캐시
-// GET으로 보내되 캐시는 하지 않는 읽기 액션.
-// (POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
-//  action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 동시에 두 건을
-//  보내는 로그조회에서 재현됨. GET은 파라미터가 URL에 있어 리다이렉트에도 유실되지 않는다.)
-var GET_NOCACHE=['getAccessLog','getChangeLogRange'];
+var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive']; // 짧은 TTL 캐시
+// GET으로 보내되 캐시는 하지 않는 읽기 액션 (로그조회 등).
+// POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
+// action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 두 건을 동시에
+// 보내는 로그조회에서 재현됨. GET은 파라미터가 URL에 있어 리다이렉트에도 유실되지 않는다.
+var GET_NOCACHE=['getAccessLog','getChangeLogRange','getAccessLogArchive','getChangeLogsArchive'];
 // 액션 실행 시 무효화할 캐시 키 맵
 var CACHE_INVALIDATE={
   addEmployee:['getAllUsers','getEmployees'],
@@ -1685,26 +1687,56 @@ function updateCalHint(){
   else el.textContent='※ 날짜 클릭 → 연차 현황 조회 (등록은 관리자만 가능)';
 }
 function initCal(){cY=new Date().getFullYear();cM=new Date().getMonth();}
+// 시스템 도입 초기라 지난달 이전엔 유의미한 데이터가 없으므로, 일단 "전월까지만" 뒤로 넘어갈 수 있게 제한
+function calMinYM(){
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth()-1;
+  if(m<0){m=11;y--;}
+  return y*12+m;
+}
 function moveCal(d){
-  if(d===0){cY=new Date().getFullYear();cM=new Date().getMonth();}
-  else{cM+=d;if(cM<0){cM=11;cY--;}if(cM>11){cM=0;cY++;}}
+  if(d===0){cY=new Date().getFullYear();cM=new Date().getMonth();loadCal();return;}
+  var ny=cY,nm=cM+d;
+  if(nm<0){nm=11;ny--;} if(nm>11){nm=0;ny++;}
+  if(d<0 && ny*12+nm<calMinYM()) return; // 전월보다 더 과거로는 이동하지 않음
+  cY=ny;cM=nm;
   loadCal();
 }
 function ymOf(y,m){return y+'-'+String(m+1).padStart(2,'0');}
+// 연차 원본 시트는 최근 6개월치만 있고 그 이전은 보관함(아카이브)으로 이동됨.
+// 연차달력은 이전/다음 버튼으로 옛날 달도 자연스럽게 넘겨보는 화면이라, 버튼을 따로 누르게 하지 않고
+// 보관 기준보다 오래된 달이면 자동으로 아카이브도 같이 조회해서 끊김 없이 보여준다.
+function calMonthIsOld(y,m){
+  var lastDay=new Date(y,m+1,0); // 해당 월의 말일
+  var cutoff=new Date(); cutoff.setDate(cutoff.getDate()-175); // 아카이브 보관기준(6개월)보다 살짝 여유를 둠
+  return lastDay<cutoff;
+}
+function mergeAnnuals(mainList,archList){
+  var seen={},out=[];
+  mainList.forEach(function(a){ seen[a.empId+'|'+a.date]=1; out.push(a); });
+  archList.forEach(function(a){ var k=a.empId+'|'+a.date; if(!seen[k]){ seen[k]=1; out.push(a); } });
+  return out;
+}
 function prefetchCalMonth(y,m){
   var ym=ymOf(y,m);
   // getAnnuals/getPerfs는 짧은 TTL 캐시가 있으므로 미리 호출해두면 이동 시 즉시 응답됨
   api('getAnnuals',{ym:ym});
   api('getPerfs',{s:ym+'-01',e:ym+'-31'});
+  if(calMonthIsOld(y,m)) api('getAnnualsArchive',{ym:ym});
 }
 function loadCal(){
   var ym=cY+'-'+String(cM+1).padStart(2,'0');
   document.getElementById('cal-ttl').textContent=cY+'년 '+(cM+1)+'월';
+  var prevBtn=document.getElementById('cal-prev');
+  if(prevBtn) prevBtn.disabled=(cY*12+cM<=calMinYM());
   var grid=document.getElementById('cal-grid');
   if(grid && !grid.children.length){grid.innerHTML='<div class="ldg" style="grid-column:1/-1">'+ldg()+'<\/div>';}
-  Promise.all([api('getAnnuals',{ym:ym}),api('getPerfs',{s:ym+'-01',e:ym+'-31'})]).then(function(rs){
-    cAn=rs[0].ok?rs[0].annuals:[];
+  var isOld=calMonthIsOld(cY,cM);
+  var calls=[api('getAnnuals',{ym:ym}),api('getPerfs',{s:ym+'-01',e:ym+'-31'})];
+  if(isOld) calls.push(api('getAnnualsArchive',{ym:ym}));
+  Promise.all(calls).then(function(rs){
+    var mainAnn=rs[0].ok?rs[0].annuals:[];
     cPf=rs[1].ok?rs[1].perfs:[];
+    cAn=isOld?mergeAnnuals(mainAnn,(rs[2]&&rs[2].ok)?rs[2].annuals:[]):mainAnn;
     renderCal();
     // 이전/다음 달을 미리 불러와 캐시에 채워둠 → 다음 이동 시 즉시 표시
     var pm=cM-1,py=cY,nm=cM+1,ny=cY;
@@ -1774,22 +1806,34 @@ function makeDayEl(ds,dayNum,other){
   return el;
 }
 
+// 팝오버를 실제 렌더링된 크기 기준으로 화면 안에 들어오게 위치 지정
+// (항목 개수와 무관하게, 어느 위치에서 클릭하든 팝오버가 항상 화면 안에 들어오고
+//  넘치는 내용은 .cpop의 max-height+overflow-y:auto로 스크롤되어 전부 보임)
+function positionCPop(cx,cy){
+  var pop=document.getElementById('cpop');
+  var margin=8;
+  pop.classList.add('open'); // 실제 크기를 재려면 먼저 표시돼 있어야 함
+  var w=pop.offsetWidth, h=pop.offsetHeight;
+  var x=cx+margin, y=cy+margin;
+  if(x+w>window.innerWidth-margin) x=cx-w-margin;
+  if(x<margin) x=margin;
+  if(y+h>window.innerHeight-margin) y=window.innerHeight-h-margin;
+  if(y<margin) y=margin;
+  pop.style.left=x+'px'; pop.style.top=y+'px';
+}
 function openCPop(date,e){
   e.stopPropagation(); popDate=date;
   var pop=document.getElementById('cpop');
   var isAdmin=CU.role==='admin';
   var empWrap=document.getElementById('cpop-emp-wrap');
   var empSel=document.getElementById('cpop-emp-sel');
+  var cx=e.clientX, cy=e.clientY;
 
   // 연차 등록/변경은 관리자만 가능 — 직원은 조회만 가능
   if(!isAdmin){
     empWrap.style.display='none';
     refreshCPopState(date);
-    var margin0=8,x0=e.clientX+margin0,y0=e.clientY+margin0;
-    if(x0+240>window.innerWidth) x0=e.clientX-240-margin0;
-    if(y0+300>window.innerHeight) y0=e.clientY-300-margin0;
-    pop.style.left=x0+'px'; pop.style.top=y0+'px';
-    pop.classList.add('open');
+    positionCPop(cx,cy);
     return;
   }
 
@@ -1803,6 +1847,7 @@ function openCPop(date,e){
     // 전체 직원 목록에서 이미 있는 사람 제외하고 추가
     (_seatUsers||[]).filter(function(u){return !cAn.find(function(a){return a.empId===u.id;})&&u.id!==CU.id;}).map(function(u){return {empId:u.id,empName:u.name};})
   ));
+  positionCPop(cx,cy); // 우선 대략적인 위치로 표시
   // 전체 직원으로 채우기
   api('getAllUsers',{}).then(function(r){
     if(!r.ok) return;
@@ -1814,13 +1859,8 @@ function openCPop(date,e){
       empSel.appendChild(opt);
     });
     refreshCPopState(date);
+    positionCPop(cx,cy); // 내용이 다 채워진 뒤 실제 높이 기준으로 다시 보정
   });
-
-  var margin=8,x=e.clientX+margin,y=e.clientY+margin;
-  if(x+240>window.innerWidth) x=e.clientX-240-margin;
-  if(y+300>window.innerHeight) y=e.clientY-300-margin;
-  pop.style.left=x+'px'; pop.style.top=y+'px';
-  pop.classList.add('open');
 
   // 관리자가 직원 바꾸면 연차 상태 갱신
   empSel.onchange=function(){refreshCPopState(date);};
@@ -2175,8 +2215,13 @@ function loadDash(dateStr){
   while(prevDt.getDay()===0 || prevDt.getDay()===6){ prevDt.setDate(prevDt.getDate()-1); }
   var prevStr = prevDt.toISOString().slice(0,10);
 
+  // 이달 실적만 있으면 되는데(+전월 말일 비교용 여유분), 예전엔 전체 실적을 무조건 다 받아와서
+  // 데이터가 쌓일수록 대시보드가 느려지는 주된 원인이었음 - 필요한 기간만 서버에 요청하도록 변경.
+  var dashBufStart=new Date(ym+'-01'); dashBufStart.setDate(dashBufStart.getDate()-7);
+  var dashS=dashBufStart.toISOString().slice(0,10), dashE=ym+'-31';
+
   Promise.all([
-    api('getPerfs',{}),
+    api('getPerfs',{s:dashS,e:dashE}),
     api('getAnnuals',{ym:ym})
   ]).then(function(rs){
     var allPerfs = rs[0].ok ? rs[0].perfs : [];
@@ -3617,31 +3662,56 @@ function setMYM(){
   if(el) el.value=new Date().toISOString().slice(0,7);
 }
 function loadMyPerf(){
-  var el=document.getElementById('my-body');
   var ym=document.getElementById('mym')?document.getElementById('mym').value:'';
   if(!ym) ym=new Date().toISOString().slice(0,7);
   var year=parseInt(ym.slice(0,4)),month=parseInt(ym.slice(5,7));
   var s=ym+'-01';
   var lastDay=new Date(year,month,0).getDate();
   var e=ym+'-'+String(lastDay).padStart(2,'0');
+  var el=document.getElementById('my-body');
   el.innerHTML=ldg();
   // 주간 그래프도 같이 갱신
   drawMyWeekChart();
   api('getPerfs',{empId:CU.id,s:s,e:e}).then(function(res){
     if(!res.ok){el.innerHTML=alHtml(res.error,'er');return;}
-    var perfs=res.perfs;
-    var tc=0,ot=0,ann=0;
-    perfs.forEach(function(p){
-      p.rows.forEach(function(r){FIELDS.forEach(function(f){tc+=r[f.k]||0;});});
-      if(p.attendStatus&&p.attendStatus.indexOf('야근')!==-1) ot++;
-      if(p.attendStatus==='연차') ann++;
-    });
-    document.getElementById('my-stats').innerHTML=
-      '<div class="sc sc-a"><div class="sv">'+perfs.length+'<\/div><div class="sl">입력 일수<\/div><\/div>'+
-      '<div class="sc sc-o"><div class="sv">'+tc+'<\/div><div class="sl">총 처리 건수<\/div><\/div>'+
-      '<div class="sc sc-d"><div class="sv">'+ot+'<\/div><div class="sl">야근 일수<\/div><\/div>'+
-      '<div class="sc sc-w"><div class="sv">'+ann+'<\/div><div class="sl">연차<\/div><\/div>';
-    if(!perfs.length){el.innerHTML='<div class="empty"><div class="ei">📋<\/div><p>기록된 실적이 없습니다.<\/p><\/div>';return;}
+    renderMyPerfList(res.perfs,ym,false);
+  });
+}
+// 원본 시트는 최근 3개월치만 보관되고, 그 이전 달은 아카이브로 이동됨.
+// 선택한 달이 2개월 이상 지난 경우에만 "이전 기록 더보기" 버튼을 보여줌(그 전 달은 원본에 다 있으니 버튼 불필요).
+function myPerfMonthsAgo(ym){
+  var now=new Date();
+  var curYM=now.getFullYear()*12+now.getMonth();
+  var selYM=parseInt(ym.slice(0,4))*12+(parseInt(ym.slice(5,7))-1);
+  return curYM-selYM;
+}
+function loadMyPerfArchive(ym){
+  var el=document.getElementById('my-body');
+  el.innerHTML=ldg();
+  api('getPerfsArchive',{empId:CU.id,ym:ym}).then(function(res){
+    if(!res.ok){el.innerHTML=alHtml(res.error,'er');return;}
+    renderMyPerfList(res.perfs,ym,true);
+  });
+}
+function renderMyPerfList(perfs,ym,fromArchive){
+  var el=document.getElementById('my-body');
+  var tc=0,ot=0,ann=0;
+  perfs.forEach(function(p){
+    p.rows.forEach(function(r){FIELDS.forEach(function(f){tc+=r[f.k]||0;});});
+    if(p.attendStatus&&p.attendStatus.indexOf('야근')!==-1) ot++;
+    if(p.attendStatus==='연차') ann++;
+  });
+  document.getElementById('my-stats').innerHTML=
+    '<div class="sc sc-a"><div class="sv">'+perfs.length+'<\/div><div class="sl">입력 일수<\/div><\/div>'+
+    '<div class="sc sc-o"><div class="sv">'+tc+'<\/div><div class="sl">총 처리 건수<\/div><\/div>'+
+    '<div class="sc sc-d"><div class="sv">'+ot+'<\/div><div class="sl">야근 일수<\/div><\/div>'+
+    '<div class="sc sc-w"><div class="sv">'+ann+'<\/div><div class="sl">연차<\/div><\/div>';
+  // 원본 시트는 최근 3개월치만 있으므로, 조회한 달이 2개월 이상 지난 경우엔 보관함(아카이브)에서 더 찾아볼 수 있게 버튼을 보여줌
+  var showMoreBtn=!fromArchive&&myPerfMonthsAgo(ym)>=2;
+  var moreBtnHtml=showMoreBtn?('<div style="text-align:center;padding:10px"><button type="button" class="btn btn-se btn-sm" id="my-archive-btn">📦 이전 기록 더보기 (보관함에서 '+ym+' 조회)</button></div>'):'';
+  if(!perfs.length){
+    el.innerHTML='<div class="empty"><div class="ei">📋<\/div><p>기록된 실적이 없습니다.'+(fromArchive?' (보관함에도 없음)':'')+'<\/p><\/div>'+moreBtnHtml;
+  } else {
     var h='<div class="tw"><table class="dt"><thead><tr><th>날짜<\/th><th>근태<\/th>';
     FIELDS.forEach(function(f){h+='<th>'+f.l+'<\/th>';});
     h+='<th>기타업무<\/th><th>합계<\/th><th><\/th><\/tr><\/thead><tbody>';
@@ -3657,15 +3727,17 @@ function loadMyPerf(){
       h+='<td><strong>'+tot+'</strong></td>';
       h+='<td></td></tr>';
     });
-    el.innerHTML=h+'</tbody></table></div>';
-  });
+    el.innerHTML=h+'</tbody></table></div>'+moreBtnHtml;
+  }
+  var mb=document.getElementById('my-archive-btn');
+  if(mb) mb.addEventListener('click',function(){ loadMyPerfArchive(ym); });
 }
 
 // ══════════════════════════════════════════════
 // 실적집계 (관리자 전용) + 전체실적 (읽기전용)
 // ══════════════════════════════════════════════
 var PA_EMP=[]; // {id,name,team}
-var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[];
+var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[], PA_TVRENEW_ROWS=[];
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
 var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_EXCLUDED=[];
 var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭제 가능하도록 리스트로 관리)
@@ -3805,6 +3877,10 @@ function paClassifyWiredProduct(name){
   if(name==='KT_TV'||name==='KT_인터넷'||name==='KT_인터넷전화'||name==='KT_일반전화') return '유선신규';
   return null; // 그 외 전부 제외 (SKT/SKB/LGU+/SKYLIFE/HelloVision/렌탈/모바일/KT_부가상품/정산관련/추가지급 등)
 }
+// '약정갱신' 카테고리 안에서 TV 계열(TV약정갱신/TV단독업셀) vs 인터넷 계열(인터넷약정갱신/인업셀)을 구분 — 실적집계 화면에 인/티 소계를 따로 보여주기 위함
+function paIsTvRenewalProduct(name){
+  return name==='KT_TV(약정갱신)'||name==='KT_티_업셀링/전환';
+}
 function paStatusQualifies(category,status){
   return true; // 모든 카테고리 상태 무관 - 이력에서 담당자 유무/정식이력 유무로 판단 (paIsCancelledBeforeRealWork)
 }
@@ -3819,45 +3895,19 @@ function paIsCancelledBeforeRealWork(status,history){
   return !hasTemplate;
 }
 var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선'];
-function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); return c; }
-
-// ── 약정갱신 세부 버킷(인업셀/인약갱/티약갱/티업셀) 판별 ─────────────────────
-// 약정갱신은 실제로 "인터넷 업셀링 + 인터넷 약정갱신 + TV 약정갱신"이 한 고객에게 함께 들어오는데,
-// 업무처리상 인터넷(업셀+약갱)은 동시에 처리하고 TV는 나중에 개통되므로 서로 다른 시점의 별개 실적이다.
-// 그래서 한 고객의 약정갱신 행을 "인터넷 파트 / TV약갱 파트 / TV업셀 파트"로 나눠(renewKind) 각각 1건씩 센다.
-//  · 인터넷 파트(net): KT_인_업셀링/전환 + KT_인터넷(약정갱신)
-//      - 인터넷약갱(KT_인터넷(약정갱신))이 있으면 → '인약갱' (업셀+약갱 동시작업이므로 인약갱으로만 1건)
-//      - 인터넷 업셀링만 있고 인터넷약갱이 없으면 → '인업셀'
-//  · TV약갱 파트(tv): KT_TV(약정갱신)
-//      - 개통상태 "개통완료" 행이 하나라도 있으면 → '티약갱' (TV는 개통 기준으로 따로 체크)
-//      - 전부 "접수중"이면 제외(null) — 아직 개통 안 된 TV약갱을 잡으면 과다 집계가 됨
-//  · TV업셀 파트(tvupsell): KT_티_업셀링/전환 → '티업셀' (TV약갱과는 별개로 각각 체크)
-function paIsActivated(status){ return String(status||'').indexOf('개통완료')!==-1; }
-// 상품명 → 약정갱신 서브파트 종류
-function paRenewKind(name){
-  if(name==='KT_티_업셀링/전환') return 'tvupsell';
-  if(name==='KT_TV(약정갱신)') return 'tv';
-  if(name==='KT_인_업셀링/전환'||name==='KT_인터넷(약정갱신)') return 'net';
-  return 'net';
-}
-function paRenewalBucket(g){
-  if(g.renewKind==='tvupsell') return '티업셀';
-  if(g.renewKind==='tv'){
-    var trDone=g.rows.some(function(r){return r['상품명']==='KT_TV(약정갱신)' && paIsActivated(r['개통상태']);});
-    return trDone ? '티약갱' : null; // 접수중만 있으면 집계 제외
-  }
-  // net 파트: 인터넷약갱이 있으면 인약갱, 없으면(업셀만) 인업셀
-  return g.rows.some(function(r){return r['상품명']==='KT_인터넷(약정갱신)';}) ? '인약갱' : '인업셀';
-}
+function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); c.약정갱신_TV=0; c.약정갱신_인터넷=0; c.약정갱신_인업셀=0; c.약정갱신_인약갱=0; c.약정갱신_티약갱=0; c.약정갱신_티업셀=0; return c; }
 
 function paAggregate(){
   var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[]; PA_EXCLUDED=[];
   var targetDate=(document.getElementById('pa-date')||{}).value||'';
-  function addCount(name,cat,customer,ts,content,bucket){
+  function addCount(name,cat,customer,ts,content,isTv,bucket){
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cat]++;
-    // 약정갱신은 세부 버킷(업셀/인약갱/티약갱)도 함께 집계 (총계는 counts[name]['약정갱신'])
-    if(bucket){ var bk='약정갱신_'+bucket; counts[name][bk]=(counts[name][bk]||0)+1; }
+    if(cat==='약정갱신'){
+      if(isTv) counts[name].약정갱신_TV++; else counts[name].약정갱신_인터넷++;
+      // 세부 버킷: 인업셀 / 인약갱 / 티약갱 / 티업셀
+      if(bucket) counts[name]['약정갱신_'+bucket]++;
+    }
     var ek=name+'|'+cat; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
     PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' ('+cat+')');
@@ -3879,32 +3929,56 @@ function paAggregate(){
         PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'취소/보류 상태이고 서비스번호·접속번호·일정 등 정식 접수이력이 전혀 없음 (접수 전 취소로 판단)'});
         return;
       }
-      // 약정갱신은 인업셀/인약갱/티약갱/티업셀 버킷으로 나누고, TV약정갱신이 "접수중"만 있으면 제외
-      var bucket;
-      if(cat==='약정갱신'){
-        bucket=paRenewalBucket({rows:eligibleRows,renewKind:g.renewKind});
-        if(bucket===null){
-          PA_EXCLUDED.push({customer:g.name,cat:cat,reason:'TV약정갱신이 개통상태 "접수중"만 있음 — 티약갱은 개통완료 기준으로만 별도 집계하므로 유선 실적데이터에서는 제외'});
-          return;
-        }
-      }
       var best=g.isTvUpsell?paFindTvUpsellStaff(eligibleRows,targetDate):paFindStaffFromRows(eligibleRows,targetDate);
-      if(best) addCount(best.name,cat,g.name,best.ts,best.content,bucket);
-      else PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key});
+      if(!best){ PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key}); return; }
+      if(cat==='약정갱신'){
+        // 약정갱신은 한 고객 안에서도 파트별(renewKind)로 나눠 각 파트당 1건씩만 센다.
+        //  · net     : 인터넷 업셀링 + 인터넷 약정갱신은 동시작업이라 함께 있어도 1건 (인터넷 소계)
+        //              - 인터넷약정갱신(KT_인터넷(약정갱신))이 있으면 '인약갱', 인업셀만 있으면 '인업셀'
+        //  · tvrenew : TV약정갱신(개통일 전용 파일) → '티약갱' (TV 소계)
+        //  · tvupsell: TV 단독 업셀링 → '티업셀' (TV 소계)
+        var isTv=(g.renewKind==='tvrenew'||g.renewKind==='tvupsell');
+        var bucket;
+        if(g.renewKind==='tvrenew') bucket='티약갱';
+        else if(g.renewKind==='tvupsell') bucket='티업셀';
+        else bucket=eligibleRows.some(function(r){return r['상품명']==='KT_인터넷(약정갱신)';})?'인약갱':'인업셀';
+        addCount(best.name,cat,g.name,best.ts,best.content,isTv,bucket);
+      } else {
+        addCount(best.name,cat,g.name,best.ts,best.content,false);
+      }
     });
   }
   var wiredGroups={};
+  // 메인 유선접수 파일 처리.
+  // 약정갱신은 한 고객 안에서도 파트를 나눈다:
+  //   · net(인터넷 파트)   : KT_인_업셀링/전환 + KT_인터넷(약정갱신) — 동시작업이라 묶어서 1건
+  //   · tvupsell(TV업셀)   : KT_티_업셀링/전환 — 별개 1건
+  //   · KT_TV(약정갱신)    : 메인 접수파일에 있는 건 "접수중"이므로 여기서는 집계하지 않음.
+  //                          TV약정갱신은 아래 개통일 전용 파일(개통완료 기준)로만 따로 잡는다.
   PA_WIRED_ROWS.forEach(function(r){
     var cat=paClassifyWiredProduct(r['상품명']);
     if(!cat) return;
     if(!paStatusQualifies(cat,r['개통상태'])) return;
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
-    // 약정갱신은 한 고객 안에서도 인터넷 파트(net)/TV약갱 파트(tv)/TV업셀 파트(tvupsell)로 나눠
-    // 각각 별개 실적으로 카운팅한다 (인터넷은 동시작업 1건, TV약갱은 개통 기준 별도, TV업셀은 별개).
-    var renewKind=(cat==='약정갱신')?paRenewKind(r['상품명']):'';
-    var isTvUpsell=(renewKind==='tvupsell');
-    var key=custKey+'|'+cat+(renewKind?('|'+renewKind):'');
+    var key, renewKind='', isTvUpsell=false;
+    if(cat==='약정갱신'){
+      var nm=r['상품명'];
+      if(nm==='KT_TV(약정갱신)') return; // 메인파일 TV약정갱신(접수중)은 제외 — 개통일 전용 파일로만 집계
+      if(nm==='KT_티_업셀링/전환'){ renewKind='tvupsell'; isTvUpsell=true; }
+      else { renewKind='net'; } // KT_인_업셀링/전환, KT_인터넷(약정갱신)
+      key=custKey+'|약정갱신|'+renewKind;
+    } else {
+      key=custKey+'|'+cat;
+    }
     (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat,renewKind:renewKind,isTvUpsell:isTvUpsell}).rows.push(r);
+  });
+  // TV약정갱신 전용 파일(개통일 기준 다운로드분): 오늘 집계일(=선택한 개통일)과 개통일이 일치하는 행만,
+  // 고객별로 1건씩 티약갱으로 집계한다 (접수일 기반 필터는 적용하지 않음).
+  var tvRenewRowsForDate=PA_TVRENEW_ROWS.filter(function(r){ return targetDate&&(r['개통일']||'').slice(0,10)===targetDate; });
+  tvRenewRowsForDate.forEach(function(r){
+    var custKey=(r['주민번호']||'').trim()||r['고객명'];
+    var key=custKey+'|약정갱신|tvrenew';
+    (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:'약정갱신',renewKind:'tvrenew',isTvUpsell:false}).rows.push(r);
   });
   var byCat={};
   Object.keys(wiredGroups).forEach(function(key){ var cat=wiredGroups[key].cat; (byCat[cat]=byCat[cat]||{})[key]=wiredGroups[key]; });
@@ -4009,6 +4083,16 @@ document.getElementById('pa-wireless-file') && document.getElementById('pa-wirel
     if(err){ document.getElementById('pa-wireless-status').textContent='❌ '+err; return; }
     PA_WIRELESS_ROWS=rows;
     document.getElementById('pa-wireless-status').textContent='✅ '+rows.length+'건 불러옴';
+    paRenderResult();
+  });
+});
+// TV약정갱신 전용 목록(개통일 기준 다운로드) - 접수일과 무관하게 개통일=집계일인 행만 그날 실적으로 반영됨(paAggregate 참고)
+document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrenew-file').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  paParseHtmlXls(f,function(rows,err){
+    if(err){ document.getElementById('pa-tvrenew-status').textContent='❌ '+err; return; }
+    PA_TVRENEW_ROWS=rows;
+    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 불러옴';
     paRenderResult();
   });
 });
@@ -4123,9 +4207,10 @@ function paRenderResult(){
       countPill(c,'수신','pa-c-call',phoneStat.I_CONN,'수신 '+paS2hms(phoneStat.I_TIME))+
       countPill(c,'땡김','pa-c-call',phoneStat.P_CONN,'땡김 '+paS2hms(phoneStat.P_TIME)) : '';
 
-    // 약갱/업셀 세부 내역 라벨: 인업셀 N/인약갱 N/티약갱 N/티업셀 N
-    var _iu=c['약정갱신_인업셀']||0,_ir=c['약정갱신_인약갱']||0,_tr=c['약정갱신_티약갱']||0,_tu=c['약정갱신_티업셀']||0;
-    var renewLabel='약갱/업셀 (인업셀'+_iu+'/인약갱'+_ir+'/티약갱'+_tr+'/티업셀'+_tu+')';
+    // 약갱/업셀 소계: 총건수 옆에 세부 버킷(인업셀/인약갱/티약갱/티업셀)을 같이 표시
+    var renewTotal=c.약정갱신||0;
+    var _iu=c.약정갱신_인업셀||0,_ia=c.약정갱신_인약갱||0,_ta=c.약정갱신_티약갱||0,_tu=c.약정갱신_티업셀||0;
+    var renewLabel='약갱/업셀'+(renewTotal>0?(' (인업셀'+_iu+'/인약갱'+_ia+'/티약갱'+_ta+'/티업셀'+_tu+')'):'');
 
     return '<div class="pa-emp-card">'+
       '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
@@ -4215,7 +4300,11 @@ function paRenderResult(){
     });
   }
   var st=document.getElementById('pa-calc-status');
-  if(st) st.textContent='유선 '+PA_WIRED_ROWS.length+'건 / 무선 '+PA_WIRELESS_ROWS.length+'건 로드됨 · '+new Date().toLocaleTimeString('ko-KR');
+  var pDate=(document.getElementById('pa-date')||{}).value||'';
+  var tvTodayCnt=PA_TVRENEW_ROWS.filter(function(r){return pDate&&(r['개통일']||'').slice(0,10)===pDate;}).length;
+  if(st) st.textContent='유선 '+PA_WIRED_ROWS.length+'건 / 무선 '+PA_WIRELESS_ROWS.length+'건'+
+    (PA_TVRENEW_ROWS.length?(' / TV약정갱신 '+PA_TVRENEW_ROWS.length+'건 중 개통일 '+(pDate||'-')+' 해당 '+tvTodayCnt+'건 반영'):'')+
+    ' 로드됨 · '+new Date().toLocaleTimeString('ko-KR');
   var ev=document.getElementById('pa-evidence'); if(ev) ev.innerHTML='';
 }
 // 카운트 pill 클릭 시 근거 표시 (전역에서 접근 가능하도록 window에 등록)
@@ -4281,9 +4370,14 @@ document.getElementById('pa-date') && document.getElementById('pa-date').addEven
 function loadAllPerfNew(){
   var dateEl=document.getElementById('ap-date');
   if(dateEl && !dateEl.value){
-    // 최초 로드 시: 오늘 데이터가 아직 없을 수 있으니(다음날 오전 입력) 게시된 가장 최근 날짜로 진입
+    var todayStr=new Date().toISOString().slice(0,10);
+    // 최초 로드 시: 오늘 데이터가 아직 없을 수 있으니(다음날 오전 입력) 게시된 가장 최근 날짜로 진입.
+    // 단, 너무 오래전(1주일 이상 지난) 날짜로 뜬금없이 진입하지 않도록 최근 1주일 이내일 때만 그 날짜를 쓰고, 아니면 오늘로.
     api('getLatestPerfDate',{}).then(function(r){
-      dateEl.value=(r.ok&&r.date)?r.date:new Date().toISOString().slice(0,10);
+      var weekAgo=new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+      var weekAgoStr=weekAgo.toISOString().slice(0,10);
+      var d=(r.ok&&r.date)?r.date:null;
+      dateEl.value=(d&&d>=weekAgoStr)?d:todayStr;
       loadAllPerfNewRender();
     });
     return;
@@ -4754,6 +4848,12 @@ function loadLogs(){
   }
   logFetchAndRender();
 }
+// 원본 접속이력/변경로그는 최근 1개월치만 있음 - 조회 시작일이 그보다 오래됐으면
+// "이전 기록 더보기" 버튼을 보여주고, 눌렀을 때만 보관함(아카이브)에서 추가로 가져와 합침.
+function logIsOldRange(start){
+  var cutoff=new Date(); cutoff.setDate(cutoff.getDate()-25);
+  return start < prFmtDate(cutoff);
+}
 function logFetchAndRender(){
   var start=document.getElementById('log-start').value, end=document.getElementById('log-end').value;
   if(!start||!end) return;
@@ -4766,21 +4866,46 @@ function logFetchAndRender(){
       if(statusEl) statusEl.textContent='불러오기 실패: '+errMsg;
       return;
     }
-    if(statusEl) statusEl.textContent=start+' ~ '+end+' · 접속 '+accRes.logs.length+'건 · 변경 '+chgRes.logs.length+'건';
-    var accTbl=document.getElementById('log-access-table');
-    var accHead='<tr><th>접속일시</th><th>이름</th><th>IP</th></tr>';
-    var accBody=accRes.logs.map(function(l){
-      return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.empName+'</td><td style="font-family:monospace">'+(l.ip||'-')+'</td></tr>';
-    }).join('');
-    accTbl.innerHTML=accHead+(accBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 접속이력이 없습니다.</td></tr>');
-    var chgTbl=document.getElementById('log-change-table');
-    var chgHead='<tr><th>수정일시</th><th>수정자</th><th>수정내용</th></tr>';
-    var chgBody=chgRes.logs.map(function(l){
-      return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.by+'</td><td class="tdl">'+l.desc+'</td></tr>';
-    }).join('');
-    chgTbl.innerHTML=chgHead+(chgBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 변경 내역이 없습니다.</td></tr>');
+    renderLogTables(accRes.logs,chgRes.logs,start,end,false);
   }).catch(function(err){
     if(statusEl) statusEl.textContent='불러오기 실패: '+(err&&err.message?err.message:'네트워크 오류');
+  });
+}
+function renderLogTables(accLogs,chgLogs,start,end,mergedWithArchive){
+  var statusEl=document.getElementById('log-status');
+  if(statusEl) statusEl.textContent=start+' ~ '+end+' · 접속 '+accLogs.length+'건 · 변경 '+chgLogs.length+'건'+(mergedWithArchive?' (보관함 포함)':'');
+  var accTbl=document.getElementById('log-access-table');
+  var accHead='<tr><th>접속일시</th><th>이름</th><th>IP</th></tr>';
+  var accBody=accLogs.map(function(l){
+    return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.empName+'</td><td style="font-family:monospace">'+(l.ip||'-')+'</td></tr>';
+  }).join('');
+  accTbl.innerHTML=accHead+(accBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 접속이력이 없습니다.</td></tr>');
+  var chgTbl=document.getElementById('log-change-table');
+  var chgHead='<tr><th>수정일시</th><th>수정자</th><th>수정내용</th></tr>';
+  var chgBody=chgLogs.map(function(l){
+    return '<tr><td style="white-space:nowrap;font-size:12px">'+l.dt+'</td><td>'+l.by+'</td><td class="tdl">'+l.desc+'</td></tr>';
+  }).join('');
+  chgTbl.innerHTML=chgHead+(chgBody||'<tr><td colspan="3" style="color:var(--tm);padding:16px;text-align:center">해당 기간 변경 내역이 없습니다.</td></tr>');
+
+  var archWrap=document.getElementById('log-archive-wrap');
+  if(!archWrap) return;
+  if(mergedWithArchive||!logIsOldRange(start)){ archWrap.innerHTML=''; return; }
+  archWrap.innerHTML='<div style="text-align:center"><button type="button" class="btn btn-se btn-sm" id="log-archive-btn">📦 이전 기록 더보기 (보관함에서 '+start+'~'+end+' 조회)</button></div>';
+  document.getElementById('log-archive-btn').addEventListener('click',function(){
+    if(statusEl) statusEl.textContent='보관함 조회 중...';
+    Promise.all([api('getAccessLogArchive',{startDate:start,endDate:end}), api('getChangeLogsArchive',{startDate:start,endDate:end})]).then(function(rs2){
+      var accArchRes=rs2[0], chgArchRes=rs2[1];
+      if(!accArchRes||!accArchRes.ok||!chgArchRes||!chgArchRes.ok){
+        var errMsg=(accArchRes&&accArchRes.error)||(chgArchRes&&chgArchRes.error)||'알 수 없는 오류';
+        if(statusEl) statusEl.textContent='보관함 불러오기 실패: '+errMsg;
+        return;
+      }
+      var mergedAcc=accLogs.concat(accArchRes.logs).sort(function(a,b){return (b.dt||'').localeCompare(a.dt||'');});
+      var mergedChg=chgLogs.concat(chgArchRes.logs).sort(function(a,b){return (b.dt||'').localeCompare(a.dt||'');});
+      renderLogTables(mergedAcc,mergedChg,start,end,true);
+    }).catch(function(err){
+      if(statusEl) statusEl.textContent='보관함 불러오기 실패: '+(err&&err.message?err.message:'네트워크 오류');
+    });
   });
 }
 document.querySelectorAll('.log-quick').forEach(function(btn){
