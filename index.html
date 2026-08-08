@@ -4343,6 +4343,8 @@ function paPublish(){
     return {
       empId:e.id, empName:e.name, team:e.team,
       유선신규:c.유선신규, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 기가아이즈:c.기가아이즈, 무선:c.무선,
+      // 약갱/업셀 세부내역 (전체실적에서도 표시하려면 게시 시 함께 저장 — 실적집계 시트에 동일 컬럼 필요)
+      약정갱신_인업셀:c.약정갱신_인업셀||0, 약정갱신_인약갱:c.약정갱신_인약갱||0, 약정갱신_티약갱:c.약정갱신_티약갱||0, 약정갱신_티업셀:c.약정갱신_티업셀||0,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
       땡김콜:ph.P_CONN, 땡김시간:paS2hms(ph.P_TIME),
       고정업무:(st.fixdurNames||[]).join(', '), 고정업무시간:fixdurHours, 연차유형:st.leave||'', VOC:st.voc||0
@@ -4411,10 +4413,14 @@ function loadAllPerfNewRender(){
         function pill(n,l,cls){ return '<div class="pa-cnt-pill '+cls+'"><span class="pa-cnt-num">'+(n||0)+'</span><span class="pa-cnt-lbl">'+l+'</span></div>'; }
         var callPills=(Number(p.발신콜)||Number(p.수신콜)||Number(p.땡김콜))?
           pill(p.발신콜,'발신 '+(p.발신시간||''),'pa-c-call')+pill(p.수신콜,'수신 '+(p.수신시간||''),'pa-c-call')+pill(p.땡김콜,'땡김 '+(p.땡김시간||''),'pa-c-call') : '';
+        // 약갱/업셀 세부내역(인업셀/인약갱/티약갱/티업셀) - 게시 데이터에 저장돼 있으면 실적집계 화면과 동일하게 표시
+        var _iu=Number(p.약정갱신_인업셀)||0,_ia=Number(p.약정갱신_인약갱)||0,_ta=Number(p.약정갱신_티약갱)||0,_tu=Number(p.약정갱신_티업셀)||0;
+        var _brSum=_iu+_ia+_ta+_tu;
+        var apRenewLabel='약갱/업셀'+(_brSum>0?(' (인업셀'+_iu+'/인약갱'+_ia+'/티약갱'+_ta+'/티업셀'+_tu+')'):'');
         return '<div class="pa-emp-card">'+
           '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div><div class="pa-controls">'+leaveBadge+fixBadge+
             (p.VOC?'<span class="pa-voc-wrap">VOC '+p.VOC+'</span>':'')+'</div></div>'+
-          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,'약갱/업셀','pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
+          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,apRenewLabel,'pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
         '</div>';
       }).join('');
       return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
