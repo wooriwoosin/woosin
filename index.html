@@ -320,6 +320,7 @@ table.pt td.otc{background:#FFF8F8;}
           <button class="btn btn-pr btn-sm" id="nt-new-btn" style="display:none">✏️ 새 공지 작성</button>
         </div>
         <div class="nt-form-card" id="nt-form" style="display:none">
+          <div class="fg"><label>등록자 (관리자 중 선택)</label><select id="nt-author"></select></div>
           <div class="fg"><label>제목</label><input type="text" id="nt-title" placeholder="공지 제목" maxlength="120"></div>
           <div class="fg"><label>내용</label><textarea id="nt-body" rows="8" placeholder="공지 내용을 입력하세요 (줄바꿈 그대로 표시됩니다)"></textarea></div>
           <div class="fg">
@@ -4977,12 +4978,30 @@ document.getElementById('log-apply-btn') && document.getElementById('log-apply-b
 var NOTICE_CACHE=[];        // 마지막으로 불러온 공지 목록 (수정 시 참조)
 var NOTICE_IMAGES=[];       // 작성/수정 폼에 첨부한 이미지 dataUrl 배열
 var NOTICE_EDIT_ID=null;    // 수정 중인 공지 id (신규면 null)
+var NOTICE_ADMINS=[];       // 등록자로 선택 가능한 관리자 목록
 
 function ntEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// 등록자 선택 드롭다운 채우기 (관리자 목록) → cb에서 기본값 지정
+function ntPopulateAuthors(cb){
+  var sel=document.getElementById('nt-author');
+  function fill(){
+    if(sel){
+      sel.innerHTML=NOTICE_ADMINS.map(function(u){return '<option value="'+ntEsc(u.id)+'">'+ntEsc(u.name)+'</option>';}).join('');
+    }
+    if(cb) cb();
+  }
+  if(NOTICE_ADMINS.length){ fill(); return; }
+  api('getAllUsers',{}).then(function(r){
+    NOTICE_ADMINS=(r&&r.ok?r.employees:[]).filter(function(u){return u.role==='admin';});
+    fill();
+  });
+}
 
 function loadNotices(){
   var isAdmin=CU&&CU.role==='admin';
   var nb=document.getElementById('nt-new-btn'); if(nb) nb.style.display=isAdmin?'inline-flex':'none';
+  if(isAdmin) ntPopulateAuthors();
   var list=document.getElementById('nt-list');
   if(list) list.innerHTML='<div class="nt-empty">불러오는 중...</div>';
   api('getNotices',{}).then(function(r){
@@ -5051,6 +5070,7 @@ function ntResetForm(){
 }
 function ntOpenNew(){
   NOTICE_EDIT_ID=null; ntResetForm();
+  ntPopulateAuthors(function(){ var sel=document.getElementById('nt-author'); if(sel&&CU) sel.value=CU.id; });
   document.getElementById('nt-save-btn').textContent='저장';
   document.getElementById('nt-form').style.display='block';
   document.getElementById('nt-title').focus();
@@ -5061,6 +5081,12 @@ window.ntEdit=function(id){
   document.getElementById('nt-title').value=n.title||'';
   document.getElementById('nt-body').value=n.body||'';
   document.getElementById('nt-pinned').checked=!!n.pinned;
+  ntPopulateAuthors(function(){
+    var sel=document.getElementById('nt-author'); if(!sel) return;
+    // 기존 등록자 id가 목록에 있으면 그걸로, 없으면 이름으로 매칭, 그래도 없으면 첫 관리자
+    if(n.authorId && NOTICE_ADMINS.some(function(u){return u.id===n.authorId;})) sel.value=n.authorId;
+    else { var byName=NOTICE_ADMINS.find(function(u){return u.name===n.author;}); if(byName) sel.value=byName.id; }
+  });
   NOTICE_IMAGES=(n.images||[]).slice(); ntRenderThumbs();
   document.getElementById('nt-save-btn').textContent='수정 저장';
   document.getElementById('nt-form').style.display='block';
@@ -5078,9 +5104,14 @@ function ntSave(){
   if(!title){ alert('제목을 입력하세요.'); return; }
   var body=document.getElementById('nt-body').value||'';
   var pinned=document.getElementById('nt-pinned').checked;
+  // 등록자: 드롭다운에서 선택한 관리자 (없으면 현재 사용자)
+  var authSel=document.getElementById('nt-author');
+  var authorId=(authSel&&authSel.value)||CU.id;
+  var authObj=NOTICE_ADMINS.find(function(u){return u.id===authorId;});
+  var authorName=authObj?authObj.name:CU.name;
   var btn=document.getElementById('nt-save-btn'); var old=btn.textContent;
   btn.textContent='저장 중...'; btn.disabled=true;
-  var notice={ title:title, body:body, pinned:pinned, author:CU.name, authorId:CU.id, images:NOTICE_IMAGES.slice() };
+  var notice={ title:title, body:body, pinned:pinned, author:authorName, authorId:authorId, images:NOTICE_IMAGES.slice() };
   if(NOTICE_EDIT_ID) notice.id=NOTICE_EDIT_ID;
   api('saveNotice',{notice:notice}).then(function(r){
     btn.textContent=old; btn.disabled=false;
