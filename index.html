@@ -307,6 +307,13 @@ table.pt td.otc{background:#FFF8F8;}
         #pg-notice .nt-imgs{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
         #pg-notice .nt-imgs img{max-width:100%;border-radius:10px;border:1px solid var(--b);cursor:zoom-in;display:block;}
         #pg-notice .nt-actions{margin-top:16px;display:flex;gap:8px;justify-content:flex-end;}
+        #pg-notice .nt-cardhead{display:flex;align-items:flex-start;gap:12px;cursor:pointer;}
+        #pg-notice .nt-cardhead>.nt-htext{flex:1;min-width:0;}
+        #pg-notice .nt-chev{flex-shrink:0;color:var(--tm);font-size:13px;margin-top:4px;transition:transform .2s;}
+        #pg-notice .nt-card.open .nt-chev{transform:rotate(180deg);}
+        #pg-notice .nt-collapse{display:none;}
+        #pg-notice .nt-card.open .nt-collapse{display:block;}
+        #pg-notice .nt-clip{font-size:11px;color:var(--tm);margin-left:6px;}
         #pg-notice .nt-form-card{background:var(--s);border:1.5px solid var(--ac);border-radius:14px;padding:22px 24px;margin-bottom:18px;}
         #pg-notice .nt-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
         #pg-notice .nt-thumb{position:relative;width:88px;height:88px;border-radius:8px;overflow:hidden;border:1px solid var(--b);}
@@ -5016,20 +5023,35 @@ function renderNotices(notices){
   var list=document.getElementById('nt-list'); if(!list) return;
   if(!notices.length){ list.innerHTML='<div class="nt-empty">등록된 공지가 없습니다.</div>'; return; }
   list.innerHTML=notices.map(function(n){
-    var imgs=(n.images||[]).map(function(u){ return '<img src="'+u+'" onclick="ntOpenImg(this.src)" alt="첨부 이미지">'; }).join('');
+    var imgArr=n.images||[];
+    var imgs=imgArr.map(function(u){ return '<img src="'+u+'" onclick="ntOpenImg(this.src)" alt="첨부 이미지">'; }).join('');
     var actions=isAdmin?('<div class="nt-actions">'+
       '<button class="btn btn-se btn-xs" onclick="ntEdit(\''+n.id+'\')">수정</button>'+
       '<button class="btn btn-dg btn-xs" onclick="ntDelete(\''+n.id+'\')">삭제</button></div>'):'';
+    // 접힌 상태에서도 사진 첨부가 있으면 표시
+    var clip=imgArr.length?('<span class="nt-clip">📷 '+imgArr.length+'</span>'):'';
     return '<div class="nt-card'+(n.pinned?' pinned':'')+'">'+
-      '<div class="nt-title">'+(n.pinned?'<span class="nt-pin">고정</span>':'')+ntEsc(n.title)+'</div>'+
-      '<div class="nt-meta">'+ntEsc(n.author||'관리자')+' · '+ntEsc(String(n.dt||'').slice(0,16))+'</div>'+
-      (n.body?'<div class="nt-body">'+ntEsc(n.body)+'</div>':'')+
-      (imgs?'<div class="nt-imgs">'+imgs+'</div>':'')+
-      actions+
+      '<div class="nt-cardhead" onclick="ntToggle(this)">'+
+        '<div class="nt-htext">'+
+          '<div class="nt-title">'+(n.pinned?'<span class="nt-pin">고정</span>':'')+ntEsc(n.title)+clip+'</div>'+
+          '<div class="nt-meta">'+ntEsc(n.author||'관리자')+' · '+ntEsc(String(n.dt||'').slice(0,16))+'</div>'+
+        '</div>'+
+        '<span class="nt-chev">▼</span>'+
+      '</div>'+
+      '<div class="nt-collapse">'+
+        (n.body?'<div class="nt-body">'+ntEsc(n.body)+'</div>':'')+
+        (imgs?'<div class="nt-imgs">'+imgs+'</div>':'')+
+        actions+
+      '</div>'+
     '</div>';
   }).join('');
 }
 
+// 공지 카드 펼치기/접기 (제목 헤더 클릭)
+window.ntToggle=function(headEl){
+  var card=headEl.closest ? headEl.closest('.nt-card') : headEl.parentNode;
+  if(card) card.classList.toggle('open');
+};
 window.ntOpenImg=function(src){
   var w=window.open('','_blank');
   if(w) w.document.write('<title>이미지</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="'+src+'" style="max-width:100%;max-height:100vh"></body>');
