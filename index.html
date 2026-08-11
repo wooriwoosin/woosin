@@ -292,6 +292,50 @@ table.pt td.otc{background:#FFF8F8;}
   </div>
   <div class="tabnav" id="tabnav"></div>
   <div class="main">
+    <!-- 공지사항 (전 직원 열람 · 관리자만 작성) -->
+    <div class="pg" id="pg-notice">
+      <style>
+        #pg-notice .nt-wrap{max-width:840px;margin:0 auto;}
+        #pg-notice .nt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+        #pg-notice .nt-head h2{font-size:20px;font-weight:700;letter-spacing:-.3px;}
+        #pg-notice .nt-card{background:var(--s);border:1px solid var(--b);border-radius:14px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:16px;}
+        #pg-notice .nt-card.pinned{border-color:var(--ac);box-shadow:0 2px 12px rgba(59,111,232,.14);}
+        #pg-notice .nt-title{font-size:18px;font-weight:700;color:var(--tp);line-height:1.45;word-break:break-word;}
+        #pg-notice .nt-pin{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--ac);border-radius:20px;padding:2px 9px;margin-right:8px;vertical-align:middle;}
+        #pg-notice .nt-meta{font-size:12.5px;color:var(--tm);margin-top:6px;}
+        #pg-notice .nt-body{font-size:15px;line-height:1.75;color:var(--tp);margin-top:14px;white-space:pre-wrap;word-break:break-word;}
+        #pg-notice .nt-imgs{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
+        #pg-notice .nt-imgs img{max-width:100%;border-radius:10px;border:1px solid var(--b);cursor:zoom-in;display:block;}
+        #pg-notice .nt-actions{margin-top:16px;display:flex;gap:8px;justify-content:flex-end;}
+        #pg-notice .nt-form-card{background:var(--s);border:1.5px solid var(--ac);border-radius:14px;padding:22px 24px;margin-bottom:18px;}
+        #pg-notice .nt-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+        #pg-notice .nt-thumb{position:relative;width:88px;height:88px;border-radius:8px;overflow:hidden;border:1px solid var(--b);}
+        #pg-notice .nt-thumb img{width:100%;height:100%;object-fit:cover;}
+        #pg-notice .nt-thumb button{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:18px;padding:0;}
+        #pg-notice .nt-empty{text-align:center;color:var(--tm);padding:44px 0;}
+      </style>
+      <div class="nt-wrap">
+        <div class="nt-head">
+          <h2>📢 공지사항</h2>
+          <button class="btn btn-pr btn-sm" id="nt-new-btn" style="display:none">✏️ 새 공지 작성</button>
+        </div>
+        <div class="nt-form-card" id="nt-form" style="display:none">
+          <div class="fg"><label>제목</label><input type="text" id="nt-title" placeholder="공지 제목" maxlength="120"></div>
+          <div class="fg"><label>내용</label><textarea id="nt-body" rows="8" placeholder="공지 내용을 입력하세요 (줄바꿈 그대로 표시됩니다)"></textarea></div>
+          <div class="fg">
+            <label>이미지 첨부 (선택 · 여러 장 가능)</label>
+            <input type="file" id="nt-img-input" accept="image/*" multiple>
+            <div class="nt-thumbs" id="nt-thumbs"></div>
+          </div>
+          <div class="fg"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500"><input type="checkbox" id="nt-pinned" style="width:16px;height:16px;accent-color:var(--ac)"> 상단 고정</label></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+            <button class="btn btn-se btn-sm" id="nt-cancel-btn">취소</button>
+            <button class="btn btn-pr btn-sm" id="nt-save-btn">저장</button>
+          </div>
+        </div>
+        <div id="nt-list"><div class="nt-empty">불러오는 중...</div></div>
+      </div>
+    </div>
     <!-- 실적집계 (관리자 전용) -->
     <div class="pg" id="pg-input">
       <div class="dbar" style="margin-bottom:14px;flex-wrap:wrap">
@@ -1039,7 +1083,7 @@ var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive']; // 짧은 TTL
 // POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
 // action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 두 건을 동시에
 // 보내는 로그조회에서 재현됨. GET은 파라미터가 URL에 있어 리다이렉트에도 유실되지 않는다.
-var GET_NOCACHE=['getAccessLog','getChangeLogRange','getAccessLogArchive','getChangeLogsArchive'];
+var GET_NOCACHE=['getAccessLog','getChangeLogRange','getAccessLogArchive','getChangeLogsArchive','getNotices'];
 // 액션 실행 시 무효화할 캐시 키 맵
 var CACHE_INVALIDATE={
   addEmployee:['getAllUsers','getEmployees'],
@@ -1402,6 +1446,7 @@ function showApp(){
   if(CU.role==='admin'){
     rbg.textContent='관리자'; rbg.className='rbg rb-a';
     var adminTabs=[
+      {id:'notice',l:'📢 공지사항',p:'pg-notice'},
       {id:'allperf',l:'📊 전체실적',p:'pg-allperf'},
       {id:'perfreport',l:'📑 실적리포트',p:'pg-perfreport'},
       {id:'perfagg',l:'📈 실적집계',p:'pg-input'},
@@ -1419,7 +1464,7 @@ function showApp(){
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'allperf';
-      var validTabs=['allperf','perfreport','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
+      var validTabs=['notice','allperf','perfreport','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
       if(CU.teamCardAdmin) validTabs.push('teamcard');
       if(CU.superAdmin) validTabs.push('logs');
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
@@ -1427,6 +1472,7 @@ function showApp(){
   } else {
     rbg.textContent='직원'; rbg.className='rbg rb-e';
     renderTabs([
+      {id:'notice',l:'📢 공지사항',p:'pg-notice'},
       {id:'allperf',l:'📊 전체실적',p:'pg-allperf'},
       {id:'perfreport',l:'📑 실적리포트',p:'pg-perfreport'},
       {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
@@ -1438,7 +1484,7 @@ function showApp(){
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'allperf';
-      var validTabs=['allperf','perfreport','cal','seats','myinfo','ip'];
+      var validTabs=['notice','allperf','perfreport','cal','seats','myinfo','ip'];
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
     });
   }
@@ -1480,6 +1526,7 @@ function switchTab(id){
     if(tb) tb.classList.toggle('active',t.id===id);
     if(pg) pg.classList.toggle('active',t.id===id);
   });
+  if(id==='notice') loadNotices();
   if(id==='cal'){initCal();loadCal();loadCalNotice();updateCalHint();}
   if(id==='allperf') loadAllPerfNew();
   if(id==='perfagg') loadPerfAgg();
@@ -4923,6 +4970,139 @@ document.querySelectorAll('.log-quick').forEach(function(btn){
   });
 });
 document.getElementById('log-apply-btn') && document.getElementById('log-apply-btn').addEventListener('click',logFetchAndRender);
+
+// ══════════════════════════════════════════════
+// 공지사항 (전 직원 열람 · 관리자만 작성)
+// ══════════════════════════════════════════════
+var NOTICE_CACHE=[];        // 마지막으로 불러온 공지 목록 (수정 시 참조)
+var NOTICE_IMAGES=[];       // 작성/수정 폼에 첨부한 이미지 dataUrl 배열
+var NOTICE_EDIT_ID=null;    // 수정 중인 공지 id (신규면 null)
+
+function ntEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function loadNotices(){
+  var isAdmin=CU&&CU.role==='admin';
+  var nb=document.getElementById('nt-new-btn'); if(nb) nb.style.display=isAdmin?'inline-flex':'none';
+  var list=document.getElementById('nt-list');
+  if(list) list.innerHTML='<div class="nt-empty">불러오는 중...</div>';
+  api('getNotices',{}).then(function(r){
+    if(!r||!r.ok){ if(list) list.innerHTML='<div class="nt-empty">불러오기 실패: '+ntEsc(r&&r.error||'')+'</div>'; return; }
+    renderNotices(r.notices||[]);
+  });
+}
+
+function renderNotices(notices){
+  NOTICE_CACHE=notices;
+  var isAdmin=CU&&CU.role==='admin';
+  var list=document.getElementById('nt-list'); if(!list) return;
+  if(!notices.length){ list.innerHTML='<div class="nt-empty">등록된 공지가 없습니다.</div>'; return; }
+  list.innerHTML=notices.map(function(n){
+    var imgs=(n.images||[]).map(function(u){ return '<img src="'+u+'" onclick="ntOpenImg(this.src)" alt="첨부 이미지">'; }).join('');
+    var actions=isAdmin?('<div class="nt-actions">'+
+      '<button class="btn btn-se btn-xs" onclick="ntEdit(\''+n.id+'\')">수정</button>'+
+      '<button class="btn btn-dg btn-xs" onclick="ntDelete(\''+n.id+'\')">삭제</button></div>'):'';
+    return '<div class="nt-card'+(n.pinned?' pinned':'')+'">'+
+      '<div class="nt-title">'+(n.pinned?'<span class="nt-pin">고정</span>':'')+ntEsc(n.title)+'</div>'+
+      '<div class="nt-meta">'+ntEsc(n.author||'관리자')+' · '+ntEsc(String(n.dt||'').slice(0,16))+'</div>'+
+      (n.body?'<div class="nt-body">'+ntEsc(n.body)+'</div>':'')+
+      (imgs?'<div class="nt-imgs">'+imgs+'</div>':'')+
+      actions+
+    '</div>';
+  }).join('');
+}
+
+window.ntOpenImg=function(src){
+  var w=window.open('','_blank');
+  if(w) w.document.write('<title>이미지</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="'+src+'" style="max-width:100%;max-height:100vh"></body>');
+};
+
+// 이미지 리사이즈(최대 1280px, JPEG) - 셀/전송 용량을 줄이면서 가독성 유지
+function ntResizeImage(file, cb){
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    var img=new Image();
+    img.onload=function(){
+      var maxDim=1280, w=img.width, h=img.height;
+      if(w>maxDim||h>maxDim){ var r=Math.min(maxDim/w, maxDim/h); w=Math.round(w*r); h=Math.round(h*r); }
+      var canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      try { cb(canvas.toDataURL('image/jpeg',0.82)); } catch(e){ cb(null); }
+    };
+    img.onerror=function(){ cb(null); };
+    img.src=ev.target.result;
+  };
+  reader.onerror=function(){ cb(null); };
+  reader.readAsDataURL(file);
+}
+
+function ntRenderThumbs(){
+  var w=document.getElementById('nt-thumbs'); if(!w) return;
+  w.innerHTML=NOTICE_IMAGES.map(function(u,i){
+    return '<div class="nt-thumb"><img src="'+u+'"><button type="button" onclick="ntRemoveImg('+i+')">×</button></div>';
+  }).join('');
+}
+window.ntRemoveImg=function(i){ NOTICE_IMAGES.splice(i,1); ntRenderThumbs(); };
+
+function ntResetForm(){
+  document.getElementById('nt-title').value='';
+  document.getElementById('nt-body').value='';
+  document.getElementById('nt-pinned').checked=false;
+  NOTICE_IMAGES=[]; ntRenderThumbs();
+}
+function ntOpenNew(){
+  NOTICE_EDIT_ID=null; ntResetForm();
+  document.getElementById('nt-save-btn').textContent='저장';
+  document.getElementById('nt-form').style.display='block';
+  document.getElementById('nt-title').focus();
+}
+window.ntEdit=function(id){
+  var n=NOTICE_CACHE.find(function(x){return x.id===id;}); if(!n) return;
+  NOTICE_EDIT_ID=id;
+  document.getElementById('nt-title').value=n.title||'';
+  document.getElementById('nt-body').value=n.body||'';
+  document.getElementById('nt-pinned').checked=!!n.pinned;
+  NOTICE_IMAGES=(n.images||[]).slice(); ntRenderThumbs();
+  document.getElementById('nt-save-btn').textContent='수정 저장';
+  document.getElementById('nt-form').style.display='block';
+  window.scrollTo({top:0,behavior:'smooth'});
+};
+window.ntDelete=function(id){
+  if(!confirm('이 공지를 삭제하시겠습니까?')) return;
+  api('deleteNotice',{id:id}).then(function(r){
+    if(r&&r.ok){ if(typeof addLog==='function') addLog('공지 삭제'); loadNotices(); }
+    else alert((r&&r.error)||'삭제 실패');
+  });
+};
+function ntSave(){
+  var title=(document.getElementById('nt-title').value||'').trim();
+  if(!title){ alert('제목을 입력하세요.'); return; }
+  var body=document.getElementById('nt-body').value||'';
+  var pinned=document.getElementById('nt-pinned').checked;
+  var btn=document.getElementById('nt-save-btn'); var old=btn.textContent;
+  btn.textContent='저장 중...'; btn.disabled=true;
+  var notice={ title:title, body:body, pinned:pinned, author:CU.name, authorId:CU.id, images:NOTICE_IMAGES.slice() };
+  if(NOTICE_EDIT_ID) notice.id=NOTICE_EDIT_ID;
+  api('saveNotice',{notice:notice}).then(function(r){
+    btn.textContent=old; btn.disabled=false;
+    if(r&&r.ok){
+      if(typeof addLog==='function') addLog((NOTICE_EDIT_ID?'공지 수정: ':'공지 작성: ')+title);
+      document.getElementById('nt-form').style.display='none';
+      NOTICE_EDIT_ID=null; loadNotices();
+    } else alert((r&&r.error)||'저장 실패');
+  });
+}
+document.getElementById('nt-new-btn') && document.getElementById('nt-new-btn').addEventListener('click',ntOpenNew);
+document.getElementById('nt-cancel-btn') && document.getElementById('nt-cancel-btn').addEventListener('click',function(){ document.getElementById('nt-form').style.display='none'; NOTICE_EDIT_ID=null; });
+document.getElementById('nt-save-btn') && document.getElementById('nt-save-btn').addEventListener('click',ntSave);
+document.getElementById('nt-img-input') && document.getElementById('nt-img-input').addEventListener('change',function(e){
+  var files=[].slice.call(e.target.files||[]); e.target.value='';
+  if(!files.length) return;
+  var i=0;
+  (function next(){
+    if(i>=files.length){ ntRenderThumbs(); return; }
+    ntResizeImage(files[i++], function(dataUrl){ if(dataUrl) NOTICE_IMAGES.push(dataUrl); next(); });
+  })();
+});
 </script>
 </body>
 </html>
