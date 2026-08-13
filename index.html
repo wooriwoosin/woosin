@@ -1082,16 +1082,17 @@ var _pid=1,_iid=5;
 
 // ── 캐시 ─────────────────────────────────────
 var _cache={};
-var CACHE_TTL=30000; // 30초 (직원목록 등)
-var CACHE_TTL_SHORT=20000; // 20초 (실적 등 자주 바뀌는 캐시)
+var _inflight={}; // 진행 중인 동일 읽기 요청 합치기 (중복 호출 방지)
+var CACHE_TTL=60000; // 60초 (직원목록/설정/자리/IP 등 자주 안 바뀌는 것)
+var CACHE_TTL_SHORT=20000; // 20초 (실적/연차/공지 등 자주 바뀌는 캐시)
 // 캐시 대상 액션 (읽기 전용 + 자주 안 바뀌는 것)
 var CACHEABLE=['getAllUsers','getEmployees','getSeats','getIPGroups','getCalNotice','getSettings'];
-var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive']; // 짧은 TTL 캐시
+var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive','getNotices']; // 짧은 TTL 캐시
 // GET으로 보내되 캐시는 하지 않는 읽기 액션 (로그조회 등).
 // POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
 // action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 두 건을 동시에
 // 보내는 로그조회에서 재현됨. GET은 파라미터가 URL에 있어 리다이렉트에도 유실되지 않는다.
-var GET_NOCACHE=['getAccessLog','getChangeLogRange','getAccessLogArchive','getChangeLogsArchive','getNotices'];
+var GET_NOCACHE=['getAccessLog','getChangeLogRange','getAccessLogArchive','getChangeLogsArchive'];
 // 액션 실행 시 무효화할 캐시 키 맵
 var CACHE_INVALIDATE={
   addEmployee:['getAllUsers','getEmployees'],
@@ -1106,7 +1107,9 @@ var CACHE_INVALIDATE={
   savePerf:['getPerfs'],
   deletePerf:['getPerfs'],
   saveAnnual:['getAnnuals'],
-  addChangeLog:['getChangeLogs']
+  addChangeLog:['getChangeLogs'],
+  saveNotice:['getNotices'],
+  deleteNotice:['getNotices']
 };
 function cacheGet(key,short){
   var c=_cache[key];
@@ -1251,56 +1254,81 @@ function refreshEmpNameMap(cb){
 }
 
 // ── API ──────────────────────────────────────
+function _delay(ms){ return new Promise(function(res){ setTimeout(res,ms); }); }
+
+// 읽기(GET): GAS가 가끔 JSON 대신 HTML 에러페이지를 주거나(→ "Unexpected token '<'")
+// 일시적 네트워크 오류가 날 때, 읽기는 여러 번 해도 안전하므로 자동 재시도한다.
+function gasRead(url){
+  var MAX=3;
+  function attempt(n){
+    return fetch(url,{method:'GET'})
+      .then(function(r){ return r.text(); })
+      .then(function(txt){
+        try { return JSON.parse(txt); }
+        catch(e){
+          if(n<MAX) return _delay(250*n).then(function(){ return attempt(n+1); });
+          return { ok:false, error:'서버 응답 오류(잠시 후 자동 복구됩니다). 새로고침 해보세요.' };
+        }
+      })
+      .catch(function(e){
+        if(n<MAX) return _delay(250*n).then(function(){ return attempt(n+1); });
+        return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) };
+      });
+  }
+  return attempt(1);
+}
+
+// 쓰기(POST): 서버가 이미 처리했을 수 있어 HTML 응답에는 재시도하지 않는다(중복저장 방지).
+// 네트워크 자체 오류(요청이 서버에 못 닿음)일 때만 1회 재시도한다.
+function gasWrite(body){
+  var MAX=2;
+  function attempt(n){
+    return fetch(GAS_URL,{ method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:body })
+      .then(function(r){ return r.text(); })
+      .then(function(txt){
+        try { return JSON.parse(txt); }
+        catch(e){ return { ok:false, error:'서버 응답 오류. 새로고침 후 반영 여부를 확인해주세요.' }; }
+      })
+      .catch(function(e){
+        if(n<MAX) return _delay(500).then(function(){ return attempt(n+1); });
+        return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) };
+      });
+  }
+  return attempt(1);
+}
+
 function api(action, data){
   if(!GAS_URL) return Promise.resolve(demo(action, data));
 
   // 쓰기 액션이면 관련 캐시 무효화
   cacheInvalidate(action);
 
-  // 캐시 가능한 액션이면 캐시 먼저 확인 (일반 TTL)
-  if(CACHEABLE.indexOf(action)!==-1){
-    var cacheKey=action+':'+JSON.stringify(data||{});
-    var cached=cacheGet(cacheKey,false);
+  var isCache=CACHEABLE.indexOf(action)!==-1;
+  var isShort=CACHEABLE_SHORT.indexOf(action)!==-1;
+  var isGet=isCache||isShort||GET_NOCACHE.indexOf(action)!==-1;
+  var key=action+':'+JSON.stringify(data||{});
+
+  // 캐시 히트면 즉시 반환
+  if(isCache||isShort){
+    var cached=cacheGet(key,isShort);
     if(cached) return Promise.resolve(cached);
-    var params=new URLSearchParams({action:action,data:JSON.stringify(data||{})});
-    return fetch(GAS_URL+'?'+params.toString(),{method:'GET'})
-      .then(function(r){return r.json();})
-      .then(function(res){if(res.ok) cacheSet(cacheKey,res);return res;})
-      .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
   }
 
-  // 짧은 TTL 캐시 (getPerfs, getAnnuals)
-  if(CACHEABLE_SHORT.indexOf(action)!==-1){
-    var cacheKey=action+':'+JSON.stringify(data||{});
-    var cached=cacheGet(cacheKey,true);
-    if(cached) return Promise.resolve(cached);
+  // 읽기 액션: GET + 재시도 + 동일요청 중복 합치기(in-flight coalescing)
+  if(isGet){
+    if(_inflight[key]) return _inflight[key];
     var params=new URLSearchParams({action:action,data:JSON.stringify(data||{})});
-    return fetch(GAS_URL+'?'+params.toString(),{method:'GET'})
-      .then(function(r){return r.json();})
-      .then(function(res){if(res.ok) cacheSet(cacheKey,res);return res;})
-      .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
+    var p=gasRead(GAS_URL+'?'+params.toString()).then(function(res){
+      if((isCache||isShort)&&res&&res.ok) cacheSet(key,res);
+      delete _inflight[key];
+      return res;
+    }, function(e){ delete _inflight[key]; return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) }; });
+    _inflight[key]=p;
+    return p;
   }
 
-  // GET 전용(캐시 안 함) 읽기 액션: 로그조회 등. POST 리다이렉트 본문 유실 문제를 피한다.
-  if(GET_NOCACHE.indexOf(action)!==-1){
-    var params=new URLSearchParams({action:action,data:JSON.stringify(data||{})});
-    return fetch(GAS_URL+'?'+params.toString(),{method:'GET'})
-      .then(function(r){return r.json();})
-      .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
-  }
-
-  // 일반 액션 (저장/삭제 등 쓰기 액션)
-  // GET 방식은 URL 길이 제한(약 2000자)에 걸려 실적 저장처럼 데이터가 큰 요청이
-  // "Failed to fetch"로 실패할 수 있어 POST로 전송한다.
-  // Content-Type을 text/plain으로 지정해야 브라우저가 preflight(OPTIONS) 요청을
-  // 보내지 않는다 (GAS 웹앱은 OPTIONS를 처리하지 않아 preflight 시 실패함).
-  return fetch(GAS_URL,{
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify(Object.assign({action:action},data||{}))
-  })
-    .then(function(r){return r.json();})
-    .catch(function(e){return{ok:false,error:'GAS 연결 실패: '+e.message};});
+  // 쓰기 액션: POST (URL 길이 제한 회피). text/plain으로 preflight(OPTIONS) 방지.
+  return gasWrite(JSON.stringify(Object.assign({action:action},data||{})));
 }
 
 function demo(action,data){
