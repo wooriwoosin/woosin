@@ -357,7 +357,7 @@ table.pt td.otc{background:#FFF8F8;}
         <div class="cttl" style="margin-bottom:10px">📁 로우데이터 업로드</div>
         <div class="row" style="gap:22px;flex-wrap:wrap;align-items:flex-start">
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">접수일 기준 <span style="color:var(--tm);font-weight:400">(유선·무선)</span></label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
-          <div><label style="font-size:12px;color:var(--ts);font-weight:600">개통일 기준 <span style="color:var(--tm);font-weight:400">(TV약정갱신)</span></label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">개통일 기준 <span style="color:var(--tm);font-weight:400">(TV약갱·무선)</span></label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">전화(CTI)</label><br><input type="file" id="pa-phone-file" accept=".xls,.xlsx,.csv"><div id="pa-phone-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
@@ -4109,8 +4109,14 @@ function paAggregate(){
   Object.keys(wiredGroups).forEach(function(key){ var cat=wiredGroups[key].cat; (byCat[cat]=byCat[cat]||{})[key]=wiredGroups[key]; });
   Object.keys(byCat).forEach(function(cat){ processGroups(byCat[cat],cat); });
 
+  // 무선(모바일)은 개통일 기준 파일에서 개통완료 + 개통일=집계일인 행만 집계한다.
+  var wirelessRowsForDate=PA_TVRENEW_ROWS.filter(function(r){
+    return paIsWirelessProduct(r['상품명'])
+      && String(r['개통상태']||'').indexOf('개통완료')!==-1
+      && targetDate && (r['개통일']||'').slice(0,10)===targetDate;
+  });
   var wirelessGroups={};
-  PA_WIRELESS_ROWS.forEach(function(r){
+  wirelessRowsForDate.forEach(function(r){
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     (wirelessGroups[custKey]=wirelessGroups[custKey]||{rows:[],name:r['고객명']}).rows.push(r);
   });
@@ -4193,21 +4199,19 @@ function loadPerfAgg(){
   });
 }
 
-// 접수일 기준 파일: 한 파일에 유선+무선이 섞여있으므로 상품명으로 나눠 담는다.
-//  · 무선(모바일_*) → PA_WIRELESS_ROWS
-//  · 그 외(유선)   → PA_WIRED_ROWS  (paClassifyWiredProduct가 KT계열만 추려 집계)
+// 접수일 기준 파일: 유선 접수 실적(유선신규/인약갱·인업셀/유선기타/기가아이즈)을 집계한다.
+// (무선은 개통일 기준으로 별도 집계하므로 여기선 담지 않는다 — 모바일 행은 유선 분류에서 자동 제외됨)
 document.getElementById('pa-wired-file') && document.getElementById('pa-wired-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
   document.getElementById('pa-wired-status').textContent='읽는 중...';
   paParseHtmlXls(f,function(rows,err){
     if(err){ document.getElementById('pa-wired-status').textContent='❌ '+err; return; }
-    PA_WIRELESS_ROWS=rows.filter(function(r){ return paIsWirelessProduct(r['상품명']); });
-    PA_WIRED_ROWS   =rows.filter(function(r){ return !paIsWirelessProduct(r['상품명']); });
-    document.getElementById('pa-wired-status').textContent='✅ 유선 '+PA_WIRED_ROWS.length+' / 무선 '+PA_WIRELESS_ROWS.length+'건';
+    PA_WIRED_ROWS=rows;
+    document.getElementById('pa-wired-status').textContent='✅ '+rows.length+'건 불러옴';
     paRenderResult();
   });
 });
-// 개통일 기준 파일: 이 파일에서는 TV약정갱신(개통완료)만 티약갱으로 집계한다 (paAggregate 참고).
+// 개통일 기준 파일: TV약정갱신(개통완료)=티약갱, 무선(모바일 개통완료)=무선 을 집계한다 (paAggregate 참고).
 document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrenew-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
   document.getElementById('pa-tvrenew-status').textContent='읽는 중...';
@@ -4215,7 +4219,8 @@ document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrene
     if(err){ document.getElementById('pa-tvrenew-status').textContent='❌ '+err; return; }
     PA_TVRENEW_ROWS=rows;
     var tvCnt=rows.filter(function(r){ return r['상품명']==='KT_TV(약정갱신)'; }).length;
-    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 (TV약정갱신 '+tvCnt+'건)';
+    var wlCnt=rows.filter(function(r){ return paIsWirelessProduct(r['상품명']); }).length;
+    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 (TV약정갱신 '+tvCnt+' / 무선 '+wlCnt+')';
     paRenderResult();
   });
 });
