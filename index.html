@@ -356,10 +356,9 @@ table.pt td.otc{background:#FFF8F8;}
       <div class="card">
         <div class="cttl" style="margin-bottom:10px">📁 로우데이터 업로드</div>
         <div class="row" style="gap:22px;flex-wrap:wrap;align-items:flex-start">
-          <div><label style="font-size:12px;color:var(--ts);font-weight:600">유선 접수</label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
-          <div><label style="font-size:12px;color:var(--ts);font-weight:600">무선 접수</label><br><input type="file" id="pa-wireless-file" accept=".xls,.xlsx,.csv"><div id="pa-wireless-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">접수일 기준 <span style="color:var(--tm);font-weight:400">(유선·무선)</span></label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">개통일 기준 <span style="color:var(--tm);font-weight:400">(TV약정갱신)</span></label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">전화(CTI)</label><br><input type="file" id="pa-phone-file" accept=".xls,.xlsx,.csv"><div id="pa-phone-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
-          <div><label style="font-size:12px;color:var(--ts);font-weight:600">TV약정갱신</label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
       </div>
@@ -3871,15 +3870,36 @@ function paHms2s(v){
 }
 function paS2hms(s){ s=Math.max(0,Math.round(s)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60; return [h,m,sec].map(function(x){return String(x).padStart(2,'0');}).join(':'); }
 
+// 상품 목록 파일 파서.
+// 신규 포맷은 진짜 .xlsx(SheetJS로 읽음), 구 포맷은 EUC-KR HTML을 .xls로 위장한 형태다.
+// 먼저 SheetJS로 시도하고(대부분 .xlsx), 실패하거나 '고객명' 헤더가 안 잡히면 HTML 파싱으로 폴백한다.
+function paRowsFromAoA(arr){
+  if(!arr||!arr.length) return [];
+  var headers=arr[0].map(function(h){ return String(h==null?'':h).trim(); });
+  if(headers.indexOf('고객명')===-1 && headers.indexOf('상품명')===-1) return []; // 헤더 못 찾음 → 폴백 신호
+  return arr.slice(1).map(function(cells){
+    var obj={}; headers.forEach(function(h,i){ var v=(cells&&cells[i]); obj[h]=(v==null?'':String(v).trim()); }); return obj;
+  }).filter(function(r){ return r['고객명']; });
+}
 function paParseHtmlXls(file, cb){
   var reader=new FileReader();
   reader.onload=function(ev){
+    var buf=ev.target.result;
+    // 1) 진짜 엑셀(.xlsx/.xls) — SheetJS. raw:false로 날짜를 파일 서식대로(예: 2026-08-31) 문자열화.
     try{
-      var bytes=new Uint8Array(ev.target.result);
-      var text=new TextDecoder('euc-kr').decode(bytes);
+      var data=new Uint8Array(buf);
+      var wb=XLSX.read(data,{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var arr=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+      var rows=paRowsFromAoA(arr);
+      if(rows.length){ cb(rows,null); return; }
+    }catch(e){ /* HTML위장 .xls일 수 있음 → 폴백 */ }
+    // 2) 폴백: EUC-KR HTML 테이블
+    try{
+      var text=new TextDecoder('euc-kr').decode(new Uint8Array(buf));
       var doc=new DOMParser().parseFromString(text,'text/html');
       var table=doc.querySelector('table');
-      if(!table){ cb(null,'테이블을 찾을 수 없습니다'); return; }
+      if(!table){ cb(null,'파일을 읽을 수 없습니다(시트/테이블 없음)'); return; }
       var trs=Array.from(table.querySelectorAll('tr'));
       if(!trs.length){ cb(null,'행이 없습니다'); return; }
       var headers=Array.from(trs[0].querySelectorAll('th,td')).map(function(td){return td.textContent.trim();});
@@ -3887,11 +3907,13 @@ function paParseHtmlXls(file, cb){
         var cells=Array.from(tr.querySelectorAll('td,th')).map(function(td){return td.textContent.trim();});
         var obj={}; headers.forEach(function(h,i){ obj[h]=cells[i]!==undefined?cells[i]:''; }); return obj;
       }).filter(function(r){return r['고객명'];});
-      cb(rows,null);
+      cb(rows, rows.length?null:'데이터가 없습니다');
     }catch(err){ cb(null,err.message); }
   };
   reader.readAsArrayBuffer(file);
 }
+// 무선(모바일) 상품 판별 — 접수일 파일 안에서 유선/무선을 상품명으로 분리
+function paIsWirelessProduct(name){ return String(name||'').indexOf('모바일')!==-1; }
 
 function paExtractEntries(history){
   if(!history) return [];
@@ -4070,9 +4092,14 @@ function paAggregate(){
     }
     (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat,renewKind:renewKind,isTvUpsell:isTvUpsell}).rows.push(r);
   });
-  // TV약정갱신 전용 파일(개통일 기준 다운로드분): 오늘 집계일(=선택한 개통일)과 개통일이 일치하는 행만,
-  // 고객별로 1건씩 티약갱으로 집계한다 (접수일 기반 필터는 적용하지 않음).
-  var tvRenewRowsForDate=PA_TVRENEW_ROWS.filter(function(r){ return targetDate&&(r['개통일']||'').slice(0,10)===targetDate; });
+  // 개통일 기준 파일: KT_TV(약정갱신)이고 개통상태 "개통완료"이며 개통일=집계일인 행만 티약갱으로 집계.
+  // (개통일 파일엔 유선·무선·다른 상품이 다 섞여있지만, 여기서는 TV약정갱신 개통분만 뽑는다.
+  //  유선신규/인약갱/무선 등은 접수일 파일에서 접수 기준으로 이미 집계함.)
+  var tvRenewRowsForDate=PA_TVRENEW_ROWS.filter(function(r){
+    return r['상품명']==='KT_TV(약정갱신)'
+      && String(r['개통상태']||'').indexOf('개통완료')!==-1
+      && targetDate && (r['개통일']||'').slice(0,10)===targetDate;
+  });
   tvRenewRowsForDate.forEach(function(r){
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     var key=custKey+'|약정갱신|tvrenew';
@@ -4166,31 +4193,29 @@ function loadPerfAgg(){
   });
 }
 
+// 접수일 기준 파일: 한 파일에 유선+무선이 섞여있으므로 상품명으로 나눠 담는다.
+//  · 무선(모바일_*) → PA_WIRELESS_ROWS
+//  · 그 외(유선)   → PA_WIRED_ROWS  (paClassifyWiredProduct가 KT계열만 추려 집계)
 document.getElementById('pa-wired-file') && document.getElementById('pa-wired-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
+  document.getElementById('pa-wired-status').textContent='읽는 중...';
   paParseHtmlXls(f,function(rows,err){
     if(err){ document.getElementById('pa-wired-status').textContent='❌ '+err; return; }
-    PA_WIRED_ROWS=rows;
-    document.getElementById('pa-wired-status').textContent='✅ '+rows.length+'건 불러옴';
+    PA_WIRELESS_ROWS=rows.filter(function(r){ return paIsWirelessProduct(r['상품명']); });
+    PA_WIRED_ROWS   =rows.filter(function(r){ return !paIsWirelessProduct(r['상품명']); });
+    document.getElementById('pa-wired-status').textContent='✅ 유선 '+PA_WIRED_ROWS.length+' / 무선 '+PA_WIRELESS_ROWS.length+'건';
     paRenderResult();
   });
 });
-document.getElementById('pa-wireless-file') && document.getElementById('pa-wireless-file').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  paParseHtmlXls(f,function(rows,err){
-    if(err){ document.getElementById('pa-wireless-status').textContent='❌ '+err; return; }
-    PA_WIRELESS_ROWS=rows;
-    document.getElementById('pa-wireless-status').textContent='✅ '+rows.length+'건 불러옴';
-    paRenderResult();
-  });
-});
-// TV약정갱신 전용 목록(개통일 기준 다운로드) - 접수일과 무관하게 개통일=집계일인 행만 그날 실적으로 반영됨(paAggregate 참고)
+// 개통일 기준 파일: 이 파일에서는 TV약정갱신(개통완료)만 티약갱으로 집계한다 (paAggregate 참고).
 document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrenew-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
+  document.getElementById('pa-tvrenew-status').textContent='읽는 중...';
   paParseHtmlXls(f,function(rows,err){
     if(err){ document.getElementById('pa-tvrenew-status').textContent='❌ '+err; return; }
     PA_TVRENEW_ROWS=rows;
-    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 불러옴';
+    var tvCnt=rows.filter(function(r){ return r['상품명']==='KT_TV(약정갱신)'; }).length;
+    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 (TV약정갱신 '+tvCnt+'건)';
     paRenderResult();
   });
 });
