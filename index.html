@@ -3913,7 +3913,8 @@ function paParseHtmlXls(file, cb){
   reader.readAsArrayBuffer(file);
 }
 // 무선(모바일) 상품 판별 — 접수일 파일 안에서 유선/무선을 상품명으로 분리
-function paIsWirelessProduct(name){ return String(name||'').indexOf('모바일')!==-1; }
+// 무선 실적은 우신 기준 "모바일_KT"만 집계 (모바일_SKT/LG/SKB 등 타사는 제외)
+function paIsWirelessProduct(name){ return name==='모바일_KT'; }
 
 function paExtractEntries(history){
   if(!history) return [];
