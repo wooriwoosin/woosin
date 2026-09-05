@@ -359,6 +359,7 @@ table.pt td.otc{background:#FFF8F8;}
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">접수일 기준 <span style="color:var(--tm);font-weight:400">(유선·무선)</span></label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">개통일 기준 <span style="color:var(--tm);font-weight:400">(TV약갱·무선)</span></label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">전화(CTI)</label><br><input type="file" id="pa-phone-file" accept=".xls,.xlsx,.csv"><div id="pa-phone-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
+          <div><label style="font-size:12px;color:var(--ts);font-weight:600">상품권 <span style="color:var(--tm);font-weight:400">(고객이력)</span></label><br><input type="file" id="pa-gift-file" accept=".xls,.xlsx,.csv"><div id="pa-gift-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
       </div>
@@ -3834,7 +3835,7 @@ function renderMyPerfList(perfs,ym,fromArchive){
 // 실적집계 (관리자 전용) + 전체실적 (읽기전용)
 // ══════════════════════════════════════════════
 var PA_EMP=[]; // {id,name,team}
-var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[], PA_TVRENEW_ROWS=[];
+var PA_WIRED_ROWS=[], PA_WIRELESS_ROWS=[], PA_PHONE_ROWS=[], PA_TVRENEW_ROWS=[], PA_GIFT_ROWS=[];
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
 var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_EXCLUDED=[];
 var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭제 가능하도록 리스트로 관리)
@@ -4015,7 +4016,7 @@ function paIsCancelledBeforeRealWork(status,history){
   var hasTemplate=entries.some(function(e){return paIsTemplateFormat(e.content);});
   return !hasTemplate;
 }
-var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선'];
+var PA_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선','상품권'];
 function paEmptyCounts(){ var c={}; PA_CATS.forEach(function(k){c[k]=0;}); c.약정갱신_TV=0; c.약정갱신_인터넷=0; c.약정갱신_인업셀=0; c.약정갱신_인약갱=0; c.약정갱신_티약갱=0; c.약정갱신_티업셀=0; return c; }
 
 function paAggregate(){
@@ -4122,12 +4123,44 @@ function paAggregate(){
     (wirelessGroups[custKey]=wirelessGroups[custKey]||{rows:[],name:r['고객명']}).rows.push(r);
   });
   processGroups(wirelessGroups,'무선');
+
+  // 상품권 등록: 고객이력 파일에서 상담일자=집계일인 메모의 상품권 등록건수를 상담자(담당자)별로 합산.
+  PA_GIFT_ROWS.forEach(function(r){
+    var d=String(r['상담일자']||'').slice(0,10);
+    if(!targetDate || d!==targetDate) return;
+    var n=paCountGiftInMemo(r['상담/이력 내용']);
+    if(n<=0) return;
+    var name=String(r['상담자']||'').trim();
+    if(!name) return;
+    if(!counts[name]) counts[name]=paEmptyCounts();
+    counts[name]['상품권']=(counts[name]['상품권']||0)+n;
+    var ek=name+'|상품권'; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
+    PA_EVIDENCE[ek].push({customer:r['고객명']||'', ts:r['상담일자']||'', content:'['+n+'건] '+String(r['상담/이력 내용']||'').slice(0,80)});
+    if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' (상품권)');
+  });
+
   // 수기로 추가된 건 반영
   PA_MANUAL_ADJ.forEach(function(m){
     if(!counts[m.name]) counts[m.name]=paEmptyCounts();
     counts[m.name][m.cat]++;
   });
   return counts;
+}
+
+// 상품권 등록 메모에서 등록 "건수"를 센다 (금액 숫자는 무시, 등록된 것만 — 요청/부재/미등록/예정 제외).
+//  · 모OO숫자(모이6/모바일이마트10/모롯마10/모농6…), 농지숫자, 롯데마트상품권10 등 코드 토큰 개수
+//  · 코드가 없어도 "상품권 등록완료"류면 1건
+function paCountGiftInMemo(text){
+  text=String(text||'');
+  if(text.indexOf('등록')===-1) return 0;
+  var done=/등록(완료|완|됨|되어있음|되어\s|함)/.test(text) || /상품권\s*등록/.test(text);
+  var pending=/(등록\s*요청|부재|미등록|등록\s*예정)/.test(text);
+  if(pending && !done) return 0;
+  var re=/(모[가-힣]{0,6}\d+|농지\d+|(?:롯데마트상품권|롯데상품권|이마트상품권|신세계상품권|농협상품권|해피머니|컬쳐랜드|문화상품권|백화점상품권)\s*\d+)/g;
+  var m=text.match(re)||[];
+  var n=m.length;
+  if(n===0 && /상품권\s*등록(완료|완|됨|함)?/.test(text) && !pending) n=1;
+  return n;
 }
 
 function paGetPhoneStat(name){
@@ -4247,6 +4280,17 @@ document.getElementById('pa-phone-file') && document.getElementById('pa-phone-fi
   };
   reader.readAsArrayBuffer(f);
 });
+// 상품권(고객이력) 파일: 상담일자=집계일인 메모의 상품권 등록건수를 상담자별로 집계 (paAggregate 참고)
+document.getElementById('pa-gift-file') && document.getElementById('pa-gift-file').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  document.getElementById('pa-gift-status').textContent='읽는 중...';
+  paParseHtmlXls(f,function(rows,err){
+    if(err){ document.getElementById('pa-gift-status').textContent='❌ '+err; return; }
+    PA_GIFT_ROWS=rows;
+    document.getElementById('pa-gift-status').textContent='✅ '+rows.length+'건 불러옴';
+    paRenderResult();
+  });
+});
 function paRenderPhoneMap(){
   var wrap=document.getElementById('pa-phone-map');
   if(!wrap) return;
@@ -4345,7 +4389,7 @@ function paRenderResult(){
       '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div>'+
         '<div class="pa-controls">'+leaveSelect+vocControl+'</div></div>'+
       '<div class="pa-counts">'+fixPill+
-        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,renewLabel,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+
+        countPill(c,'유선신규','pa-c-new',undefined,undefined,e.name)+countPill(c,'약정갱신','pa-c-renew',undefined,renewLabel,e.name)+countPill(c,'유선기타','pa-c-etc',undefined,undefined,e.name)+countPill(c,'기가아이즈','pa-c-giga',undefined,undefined,e.name)+countPill(c,'무선','pa-c-mobile',undefined,undefined,e.name)+countPill(c,'상품권','pa-c-giga',undefined,undefined,e.name)+
         callPills+
       '</div></div>';
   }
@@ -4471,7 +4515,7 @@ function paPublish(){
     },0);
     return {
       empId:e.id, empName:e.name, team:e.team,
-      유선신규:c.유선신규, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 기가아이즈:c.기가아이즈, 무선:c.무선,
+      유선신규:c.유선신규, 약정갱신:c.약정갱신, 유선기타:c.유선기타, 기가아이즈:c.기가아이즈, 무선:c.무선, 상품권:c.상품권||0,
       // 약갱/업셀 세부내역 (전체실적에서도 표시하려면 게시 시 함께 저장 — 실적집계 시트에 동일 컬럼 필요)
       약정갱신_인업셀:c.약정갱신_인업셀||0, 약정갱신_인약갱:c.약정갱신_인약갱||0, 약정갱신_티약갱:c.약정갱신_티약갱||0, 약정갱신_티업셀:c.약정갱신_티업셀||0,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
@@ -4549,7 +4593,7 @@ function loadAllPerfNewRender(){
         return '<div class="pa-emp-card">'+
           '<div class="pa-card-top"><div class="pa-name">'+e.name+'</div><div class="pa-controls">'+leaveBadge+fixBadge+
             (p.VOC?'<span class="pa-voc-wrap">VOC '+p.VOC+'</span>':'')+'</div></div>'+
-          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,apRenewLabel,'pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+callPills+'</div>'+
+          '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,apRenewLabel,'pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+pill(p.상품권,'상품권','pa-c-giga')+callPills+'</div>'+
         '</div>';
       }).join('');
       return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
@@ -4802,7 +4846,7 @@ document.getElementById('tcu-save') && document.getElementById('tcu-save').addEv
 // ══════════════════════════════════════════════
 // 실적리포트 (주간/월간 종합)
 // ══════════════════════════════════════════════
-var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선'];
+var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선']; // 합계/환산실적 대상 (상품권은 별도 열로만 표시)
 function prPad(n){ return String(n).padStart(2,'0'); }
 function prFmtDate(d){ return d.getFullYear()+'-'+prPad(d.getMonth()+1)+'-'+prPad(d.getDate()); }
 function prRangeFor(kind){
@@ -4851,8 +4895,9 @@ function prFetchAndRender(){
     perfRes.rows.forEach(function(r){
       var id=r.empId;
       if(adminIds[id]||adminNames[(r.empName||'').trim()]) return;
-      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
+      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
       PR_CATS.forEach(function(c){ sums[id][c]+=Number(r[c]||0); });
+      sums[id].상품권+=Number(r.상품권||0);
       sums[id].발신콜+=Number(r.발신콜||0); sums[id].수신콜+=Number(r.수신콜||0); sums[id].땡김콜+=Number(r.땡김콜||0);
       sums[id].VOC+=Number(r.VOC||0);
       var leaveH=PR_LEAVE_HOURS[r.연차유형]!==undefined?PR_LEAVE_HOURS[r.연차유형]:0;
@@ -4897,18 +4942,19 @@ function prRenderTable(sums){
   var activeIds=Object.keys(sums).filter(function(id){return !sums[id].retired;}).sort(byRate);
   var retiredIds=Object.keys(sums).filter(function(id){return sums[id].retired;}).sort(byRate);
   var ids=activeIds.concat(retiredIds);
-  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약갱/업셀</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
-  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
+  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약갱/업셀</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>상품권</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
+  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
   var body=ids.map(function(id){
     var s=sums[id];
     var total=prTotal(s);
     var rate=prRate(s);
     PR_CATS.forEach(function(c){grand[c]+=s[c];});
+    grand.상품권+=(s.상품권||0);
     grand.발신콜+=s.발신콜; grand.수신콜+=s.수신콜; grand.땡김콜+=s.땡김콜; grand.VOC+=s.VOC;
     grand.fixdurHours+=s.fixdurHours; grand.availableHours+=s.availableHours;
     var rowStyle=s.retired?' style="background:#F5F5F5;color:var(--tm)"':'';
     return '<tr'+rowStyle+'><td class="tc">'+s.team+'</td><td style="font-weight:600">'+s.name+'</td>'+
-      '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td>'+
+      '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td><td>'+(s.상품권||0)+'</td>'+
       '<td>'+s.발신콜+'</td><td>'+s.수신콜+'</td><td>'+s.땡김콜+'</td><td>'+s.VOC+'</td>'+
       '<td style="font-weight:700">'+total+'</td>'+
       '<td>'+s.fixdurHours.toFixed(1)+'</td><td>'+s.availableHours.toFixed(1)+'</td>'+
@@ -4918,11 +4964,11 @@ function prRenderTable(sums){
   var grandTotal=prTotal(grand);
   var grandRate=prRate(grand);
   var footRow='<tr style="background:var(--bg);font-weight:800"><td colspan="2">전체 합계</td>'+
-    '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td>'+
+    '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td><td>'+grand.상품권+'</td>'+
     '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td>'+grandTotal+'</td>'+
     '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
     '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td><td></td></tr>';
-  tbl.innerHTML=head+(body||'<tr><td colspan="16" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
+  tbl.innerHTML=head+(body||'<tr><td colspan="17" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
 }
 function prRenderChart(sums){
   var wrap=document.getElementById('pr-chart');

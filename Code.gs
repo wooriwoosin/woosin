@@ -28,7 +28,7 @@ function getSheet(name) {
   var sh = SS.getSheetByName(name);
   if (!sh) { sh = SS.insertSheet(name); initSheet(sh, name); }
   if (name === '직원') { ensureColumns(sh, ['skills', 'ext', 'subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw','retiredAt','acctDisposed','teamCardAdmin','superAdmin']); seedTeamCardAdmins(sh); seedSuperAdmin(sh); } // 기존 시트에 컬럼 자동 추가 (마이그레이션)
-  if (name === '실적집계') { renameColumn(sh, '신규접수', '유선신규'); ensureColumns(sh, ['기가아이즈', '고정업무시간', '약정갱신_인업셀', '약정갱신_인약갱', '약정갱신_티약갱', '약정갱신_티업셀']); }
+  if (name === '실적집계') { renameColumn(sh, '신규접수', '유선신규'); ensureColumns(sh, ['기가아이즈', '고정업무시간', '약정갱신_인업셀', '약정갱신_인약갱', '약정갱신_티약갱', '약정갱신_티업셀', '상품권']); }
   return sh;
 }
 
@@ -100,7 +100,7 @@ function initSheet(sh, name) {
                   'cid1','cpw1','idms1','cid2','cpw2','idms2','bph','doc','s1','pcpw','pcpwDate',
                   'skills','ext','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw','retiredAt','acctDisposed','teamCardAdmin'],
     '실적':      ['id','empId','empName','date','attendStatus','rows'],
-    '실적집계':  ['date','empId','empName','team','유선신규','약정갱신','약정갱신_인업셀','약정갱신_인약갱','약정갱신_티약갱','약정갱신_티업셀','유선기타','기가아이즈','무선',
+    '실적집계':  ['date','empId','empName','team','유선신규','약정갱신','약정갱신_인업셀','약정갱신_인약갱','약정갱신_티약갱','약정갱신_티업셀','유선기타','기가아이즈','무선','상품권',
                   '발신콜','발신시간','수신콜','수신시간','땡김콜','땡김시간','고정업무','고정업무시간','연차유형','VOC'],
     '연차':      ['id','empId','empName','date','type'],
     '연차공지':  ['notice'],
