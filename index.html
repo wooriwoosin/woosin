@@ -1083,11 +1083,12 @@ var _pid=1,_iid=5;
 // ── 캐시 ─────────────────────────────────────
 var _cache={};
 var _inflight={}; // 진행 중인 동일 읽기 요청 합치기 (중복 호출 방지)
-var CACHE_TTL=60000; // 60초 (직원목록/설정/자리/IP 등 자주 안 바뀌는 것)
-var CACHE_TTL_SHORT=20000; // 20초 (실적/연차/공지 등 자주 바뀌는 캐시)
+var CACHE_TTL=180000; // 3분 (직원목록/설정/자리/IP 등 자주 안 바뀌는 것)
+var CACHE_TTL_SHORT=90000; // 90초 (실적/연차/공지 등 자주 바뀌는 캐시)
 // 캐시 대상 액션 (읽기 전용 + 자주 안 바뀌는 것)
 var CACHEABLE=['getAllUsers','getEmployees','getSeats','getIPGroups','getCalNotice','getSettings'];
-var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive','getNotices']; // 짧은 TTL 캐시
+// 실적/연차 조회는 원래 캐시 없이 매번 GAS를 쳐서 느렸음 → GET+캐시로 전환 (자주 쓰는 화면 체감 속도 개선)
+var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive','getNotices','getDailyPerf','getPerfSummary','getLatestPerfDate']; // 짧은 TTL 캐시
 // GET으로 보내되 캐시는 하지 않는 읽기 액션 (로그조회 등).
 // POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
 // action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 두 건을 동시에
@@ -1104,30 +1105,57 @@ var CACHE_INVALIDATE={
   deleteIPGroup:['getIPGroups'],
   saveCalNotice:['getCalNotice'],
   saveSettings:['getSettings'],
-  savePerf:['getPerfs'],
-  deletePerf:['getPerfs'],
+  savePerf:['getPerfs','getDailyPerf','getPerfSummary','getLatestPerfDate'],
+  deletePerf:['getPerfs','getDailyPerf','getPerfSummary','getLatestPerfDate'],
+  publishDailyPerf:['getDailyPerf','getPerfSummary','getLatestPerfDate'],
   saveAnnual:['getAnnuals'],
   addChangeLog:['getChangeLogs'],
   saveNotice:['getNotices'],
   deleteNotice:['getNotices']
 };
+// 새로고침해도 캐시가 유지되도록 localStorage에도 보관한다 (자주 쓰는 실적/연차/설정 화면 체감속도↑).
+// 단, 계정정보가 든 직원목록(getAllUsers/getEmployees)은 디스크에 남기지 않고 메모리 캐시만 사용.
+var PERSIST_PREFIX='wc1_';
+var PERSIST_DENY={getAllUsers:1,getEmployees:1};
+function _canPersist(key){ return !PERSIST_DENY[String(key).split(':')[0]]; }
 function cacheGet(key,short){
-  var c=_cache[key];
-  if(!c) return null;
   var ttl=short?CACHE_TTL_SHORT:CACHE_TTL;
-  if(Date.now()-c.ts>ttl){delete _cache[key];return null;}
-  return c.data;
+  var c=_cache[key];
+  if(c){ if(Date.now()-c.ts>ttl){ delete _cache[key]; } else return c.data; }
+  if(_canPersist(key)){
+    try{
+      var raw=localStorage.getItem(PERSIST_PREFIX+key);
+      if(raw){ var p=JSON.parse(raw);
+        if(p && (Date.now()-p.ts)<=ttl){ _cache[key]={data:p.data,ts:p.ts}; return p.data; }
+        localStorage.removeItem(PERSIST_PREFIX+key);
+      }
+    }catch(e){}
+  }
+  return null;
 }
-function cacheSet(key,data){_cache[key]={data:data,ts:Date.now()};}
+function cacheSet(key,data){
+  _cache[key]={data:data,ts:Date.now()};
+  if(!_canPersist(key)) return;
+  try{ localStorage.setItem(PERSIST_PREFIX+key, JSON.stringify({data:data,ts:Date.now()})); }
+  catch(e){ // 용량 초과 등 → 우리 캐시 전부 비우고 한 번만 재시도
+    try{ for(var i=localStorage.length-1;i>=0;i--){ var lk=localStorage.key(i); if(lk&&lk.indexOf(PERSIST_PREFIX)===0) localStorage.removeItem(lk); }
+      localStorage.setItem(PERSIST_PREFIX+key, JSON.stringify({data:data,ts:Date.now()})); }catch(e2){}
+  }
+}
 function cacheInvalidate(action){
   var prefixes=CACHE_INVALIDATE[action]||[];
   if(!prefixes.length) return;
-  // 캐시 키는 'action:JSON' 형태이므로 prefix가 포함된 키를 전부 삭제
+  // 캐시 키는 'action:JSON' 형태이므로 prefix가 포함된 키를 전부 삭제 (메모리 + localStorage)
   Object.keys(_cache).forEach(function(k){
-    prefixes.forEach(function(p){
-      if(k===p||k.indexOf(p+':')===0) delete _cache[k];
-    });
+    prefixes.forEach(function(p){ if(k===p||k.indexOf(p+':')===0) delete _cache[k]; });
   });
+  try{
+    for(var i=localStorage.length-1;i>=0;i--){
+      var lk=localStorage.key(i); if(!lk||lk.indexOf(PERSIST_PREFIX)!==0) continue;
+      var rk=lk.slice(PERSIST_PREFIX.length);
+      prefixes.forEach(function(p){ if(rk===p||rk.indexOf(p+':')===0) localStorage.removeItem(lk); });
+    }
+  }catch(e){}
 }
 
 // ── 전역 설정값 (관리자가 수정 → '설정' 시트에 저장 → 전체 사용자에 반영) ──
