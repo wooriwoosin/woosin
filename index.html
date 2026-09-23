@@ -1088,7 +1088,7 @@ var CACHE_TTL_SHORT=90000; // 90초 (실적/연차/공지 등 자주 바뀌는 �
 // 캐시 대상 액션 (읽기 전용 + 자주 안 바뀌는 것)
 var CACHEABLE=['getAllUsers','getEmployees','getSeats','getIPGroups','getCalNotice','getSettings'];
 // 실적/연차 조회는 원래 캐시 없이 매번 GAS를 쳐서 느렸음 → GET+캐시로 전환 (자주 쓰는 화면 체감 속도 개선)
-var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive','getNotices','getDailyPerf','getPerfSummary','getLatestPerfDate']; // 짧은 TTL 캐시
+var CACHEABLE_SHORT=['getPerfs','getAnnuals','getAnnualsArchive','getNotices','getDailyPerf','getPerfSummary','getLatestPerfDate','getTeamCards','getTeamCardUsage','getTeamCardBudget']; // 짧은 TTL 캐시
 // GET으로 보내되 캐시는 하지 않는 읽기 액션 (로그조회 등).
 // POST로 보내면 GAS가 302 리다이렉트를 응답하고, 리다이렉트 추종 시 요청 본문이 사라져
 // action 파라미터가 유실 → "파라미터없음" 오류가 난다. 특히 Promise.all로 두 건을 동시에
@@ -1111,7 +1111,14 @@ var CACHE_INVALIDATE={
   saveAnnual:['getAnnuals'],
   addChangeLog:['getChangeLogs'],
   saveNotice:['getNotices'],
-  deleteNotice:['getNotices']
+  deleteNotice:['getNotices'],
+  addTeamCard:['getTeamCards'],
+  updateTeamCard:['getTeamCards'],
+  deleteTeamCard:['getTeamCards','getTeamCardUsage'],
+  addTeamCardUsage:['getTeamCardUsage'],
+  updateTeamCardUsage:['getTeamCardUsage'],
+  deleteTeamCardUsage:['getTeamCardUsage'],
+  saveTeamCardBudget:['getTeamCardBudget']
 };
 // 새로고침해도 캐시가 유지되도록 localStorage에도 보관한다 (자주 쓰는 실적/연차/설정 화면 체감속도↑).
 // 단, 계정정보가 든 직원목록(getAllUsers/getEmployees)은 디스크에 남기지 않고 메모리 캐시만 사용.
@@ -1310,10 +1317,21 @@ function gasRead(url){
 // POST에서 나던 "파라미터없음(저장은 됨)" 오류를 근본적으로 없앤다. 재시도는 하지 않는다
 // (혹시 실패해도 중복 append 방지). 저장/조회 결과는 캐시 무효화로 다음 조회에서 반영된다.
 function gasWriteGet(url){
-  return fetch(url,{method:'GET'})
-    .then(function(r){ return r.text(); })
-    .then(function(txt){ try{ return JSON.parse(txt); }catch(e){ return { ok:false, error:'서버 응답 오류. 새로고침 후 반영 여부를 확인해주세요.' }; } })
-    .catch(function(e){ return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) }; });
+  var MAX=3;
+  function attempt(n){
+    return fetch(url,{method:'GET'})
+      .then(function(r){ return r.text(); })
+      .then(function(txt){
+        try{ return JSON.parse(txt); }
+        catch(e){ return { ok:false, error:'서버 응답 오류. 새로고침 후 반영 여부를 확인해주세요.' }; } // HTML응답=서버가 이미 처리했을 수 있어 재시도 안 함
+      })
+      .catch(function(e){
+        // 네트워크 오류 = 요청이 서버에 못 닿음 → 안전하게 재시도 (중복저장 위험 없음)
+        if(n<MAX) return _delay(500).then(function(){ return attempt(n+1); });
+        return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) };
+      });
+  }
+  return attempt(1);
 }
 
 // 쓰기(POST): 서버가 이미 처리했을 수 있어 HTML 응답에는 재시도하지 않는다(중복저장 방지).
