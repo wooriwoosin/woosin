@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>업무 관리 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--bg:#F7F8FA;--s:#FFF;--b:#E4E6EA;--bs:#C8CDD6;--tp:#1A1D23;--ts:#5A6170;--tm:#9BA3AF;--ac:#3B6FE8;--al:#EEF3FD;--ad:#2A52C4;--ok:#1D9E75;--okl:#E1F5EE;--wn:#BA7517;--wnl:#FAEEDA;--dg:#A32D2D;--dgl:#FCEBEB;--pp:#534AB7;--ppl:#EEEDFE;--r:10px;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -1353,8 +1354,290 @@ function gasWrite(body){
   return attempt(1);
 }
 
+// ════════════════════════════════════════════════════════════
+//  Supabase 데이터 레이어 (GAS 대체) — api()가 이걸 호출한다.
+//  반환 형태(ok/employees/perfs/... )는 기존 GAS와 100% 동일하게 유지해서
+//  나머지 화면 코드는 하나도 바꾸지 않아도 되게 했다.
+// ════════════════════════════════════════════════════════════
+var SUPA_URL='https://iwfiilgjiqkdsuybqwwk.supabase.co';
+var SUPA_KEY='sb_publishable_q3SLb7fToGXt9J4o7tkYOw_QArw7mQ9'; // 공개용 키(프론트 노출 OK). RLS로 로그인한 사람만 접근 가능.
+var AUTH_EMAIL_DOMAIN='woosin.local';
+var DEFAULT_PW='woosin-blank-0000'; // 비번 없는 직원용 기본비번(직원은 몰라도 됨 - 빈칸이면 자동 사용)
+var sb=null;
+try{ if(window.supabase&&window.supabase.createClient){ sb=window.supabase.createClient(SUPA_URL,SUPA_KEY); window.sb=sb; } }
+catch(e){ console.error('Supabase 초기화 실패',e); }
+
+function _loginEmail(id){ return String(id||'').trim().toLowerCase()+'@'+AUTH_EMAIL_DOMAIN; }
+function _skillsObj(v){ if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v); }catch(e){ return {}; } }
+function _jarr(v){ if(!v) return []; if(typeof v==='object') return Array.isArray(v)?v:[]; try{ var p=JSON.parse(v); return Array.isArray(p)?p:[]; }catch(e){ return []; } }
+function _boolize(v){ if(v===true||v===false) return v; if(v==='Y'||v==='y'||v==='true'||v===1||v==='1') return true; if(v===''||v==null||v==='N'||v==='n'||v==='false'||v===0||v==='0') return false; return v; }
+function _normEmpBools(o){ ['retired','teamCardAdmin','superAdmin','acctDisposed'].forEach(function(k){ if(k in o) o[k]=_boolize(o[k]); }); }
+function _ymRange(ym){ var y=parseInt(ym.slice(0,4),10), m=parseInt(ym.slice(5,7),10); var ny=m===12?y+1:y, nm=m===12?1:m+1; return {start:ym+'-01', next:ny+'-'+String(nm).padStart(2,'0')+'-01'}; }
+function _nowStr(){ var n=new Date(); function p(x){return String(x).padStart(2,'0');} return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+':'+p(n.getSeconds()); }
+function _chk(r){ if(r&&r.error) throw new Error((r.error.message||JSON.stringify(r.error))); return r?r.data:null; }
+var _EMP_COLS=['id','pw','name','role','color','hire','phone','team','rank','duty','cid1','cpw1','idms1','cid2','cpw2','idms2','bph','doc','s1','pcpw','pcpwDate','skills','ext','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw','retiredAt','retired','acctDisposed','teamCardAdmin','superAdmin'];
+function _pick(obj, cols){ var o={}; cols.forEach(function(k){ if(obj[k]!==undefined) o[k]=obj[k]; }); return o; }
+var _SEAT_DEFAULTS=[
+  {id:'s2-L1',label:'2층 좌①',empId:''},{id:'s2-L2',label:'2층 좌②',empId:''},
+  {id:'s2-R1',label:'2층 우①',empId:''},{id:'s2-R2',label:'2층 우②',empId:''},{id:'s2-R3',label:'2층 우③',empId:''},
+  {id:'s1-L1',label:'1층 좌①',empId:''},{id:'s1-L2',label:'1층 좌②',empId:''},{id:'s1-L3',label:'1층 좌③',empId:''},
+  {id:'s1-L4',label:'1층 좌④',empId:''},{id:'s1-L5',label:'1층 좌⑤',empId:''},
+  {id:'s1-R1',label:'1층 우①',empId:''},{id:'s1-R2',label:'1층 우②',empId:''},{id:'s1-R3',label:'1층 우③',empId:''},
+  {id:'s1-R4',label:'1층 우④',empId:''},{id:'s1-R5',label:'1층 우⑤',empId:''},{id:'s1-SOLO',label:'1층 단독',empId:''}
+];
+
+async function supaDispatch(action, data){
+  data=data||{};
+  try{
+    switch(action){
+      case 'ping': return { ok:true };
+
+      // ── 인증 ──
+      case 'login': {
+        var r=await sb.auth.signInWithPassword({ email:_loginEmail(data.id), password: data.pw?String(data.pw):DEFAULT_PW });
+        if(r.error) return { ok:false, error:'아이디 또는 비밀번호가 올바르지 않습니다.' };
+        var rows=_chk(await sb.from('직원').select('*').eq('id',String(data.id).trim()).limit(1));
+        if(!rows||!rows.length) return { ok:false, error:'직원 정보를 찾을 수 없습니다. 관리자에게 문의하세요.' };
+        var u=rows[0]; u.skills=_skillsObj(u.skills); delete u.pw;
+        return { ok:true, user:u };
+      }
+
+      // ── 직원 ──
+      case 'getEmployees':
+      case 'getAllUsers': {
+        var list=_chk(await sb.from('직원').select('*'))||[];
+        if(action==='getEmployees') list=list.filter(function(r){ return r.role!=='admin'; });
+        list=list.map(function(u){ var s=Object.assign({},u); delete s.pw; s.skills=_skillsObj(s.skills); return s; });
+        return { ok:true, employees:list };
+      }
+      case 'getUser': {
+        var ur=_chk(await sb.from('직원').select('*').eq('id',data.id).limit(1));
+        if(!ur||!ur.length) return { ok:false, error:'직원을 찾을 수 없습니다.' };
+        var uu=ur[0]; uu.skills=_skillsObj(uu.skills); return { ok:true, user:uu };
+      }
+      case 'addEmployee': {
+        var emp=Object.assign({}, data.emp||{});
+        var ex=_chk(await sb.from('직원').select('id').eq('id',emp.id).limit(1));
+        if(ex&&ex.length) return { ok:false, error:'이미 존재하는 아이디입니다.' };
+        if(emp.skills!==undefined && typeof emp.skills!=='object') emp.skills=_skillsObj(emp.skills);
+        _normEmpBools(emp);
+        _chk(await sb.from('직원').insert(_pick(emp,_EMP_COLS)));
+        return { ok:true };
+      }
+      case 'deleteEmployee': { _chk(await sb.from('직원').delete().eq('id',data.id)); return { ok:true }; }
+      case 'updateEmpAdmin': {
+        var f=Object.assign({}, data.fields||{});
+        if(f.skills!==undefined && typeof f.skills!=='object') f.skills=_skillsObj(f.skills);
+        if(f.newId){ f.id=f.newId; delete f.newId; }
+        _normEmpBools(f);
+        _chk(await sb.from('직원').update(_pick(f,_EMP_COLS)).eq('id',data.id));
+        return { ok:true };
+      }
+      case 'updateEmpSelf': {
+        var allowed=['cid1','cpw1','idms1','cid2','cpw2','idms2','subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw','pcpw','pcpwDate','ext'];
+        var safe={}; allowed.forEach(function(k){ if(data.fields&&data.fields[k]!==undefined) safe[k]=data.fields[k]; });
+        _chk(await sb.from('직원').update(safe).eq('id',data.id));
+        return { ok:true };
+      }
+      case 'bulkUpdateAccounts': {
+        var all=_chk(await sb.from('직원').select('id,name'))||[];
+        var byName={}; all.forEach(function(u){ byName[String(u.name||'').trim()]=u.id; });
+        var updated=[], unmatched=[], jobs=[];
+        (data.rows||[]).forEach(function(r){
+          var nm=String(r.name||'').trim(); if(!nm) return;
+          var empId=byName[nm];
+          if(!empId){ unmatched.push(nm); return; }
+          var fields={};
+          ['subUserName','wUserName','wcid','wcpw','widms','katalkId','katalkPw','cid1','cpw1','idms1','cid2','cpw2','idms2'].forEach(function(k){
+            if(r[k]===undefined) return;
+            if(data.skipBlanks && r[k]==='') return;
+            fields[k]=r[k];
+          });
+          jobs.push(sb.from('직원').update(fields).eq('id',empId).then(function(res){ if(res.error) unmatched.push(nm); else updated.push(nm); }));
+        });
+        await Promise.all(jobs);
+        return { ok:true, updated:updated, unmatched:unmatched };
+      }
+
+      // ── 실적 ──
+      case 'savePerf': {
+        var pr=data.r||{}; var pid='p_'+pr.empId+'_'+pr.date;
+        _chk(await sb.from('실적').delete().eq('id',pid));
+        _chk(await sb.from('실적').insert({ id:pid, empId:pr.empId, empName:pr.empName, date:pr.date, attendStatus:pr.attendStatus||'', rows:pr.rows||[] }));
+        return { ok:true };
+      }
+      case 'getPerfsArchive': return { ok:true, perfs:[] };
+      case 'getPerfs': {
+        var q=sb.from('실적').select('*');
+        if(data.empId) q=q.eq('empId',data.empId);
+        if(data.ym){ var rg=_ymRange(data.ym); q=q.gte('date',rg.start).lt('date',rg.next); }
+        if(data.s) q=q.gte('date',data.s);
+        if(data.e) q=q.lte('date',data.e);
+        var prows=(_chk(await q)||[]).map(function(x){ x.rows=_jarr(x.rows); return x; });
+        return { ok:true, perfs:prows };
+      }
+      case 'deletePerf': { _chk(await sb.from('실적').delete().eq('empId',data.empId).eq('date',data.date)); return { ok:true }; }
+      case 'publishDailyPerf': {
+        var AGG_COLS=['date','empId','empName','team','유선신규','약정갱신','약정갱신_인업셀','약정갱신_인약갱','약정갱신_티약갱','약정갱신_티업셀','유선기타','기가아이즈','무선','상품권','발신콜','발신시간','수신콜','수신시간','땡김콜','땡김시간','고정업무','고정업무시간','연차유형','VOC'];
+        _chk(await sb.from('실적집계').delete().eq('date',data.date));
+        var agg=(data.rows||[]).map(function(x){ var o={}; AGG_COLS.forEach(function(k){ if(x[k]!==undefined) o[k]=x[k]; }); o.date=data.date; return o; });
+        if(agg.length) _chk(await sb.from('실적집계').insert(agg));
+        return { ok:true, count:agg.length };
+      }
+      case 'getLatestPerfDate': {
+        var ld=_chk(await sb.from('실적집계').select('date').order('date',{ascending:false}).limit(1))||[];
+        return { ok:true, date: ld.length?ld[0].date:null };
+      }
+      case 'getDailyPerf': { return { ok:true, rows:(_chk(await sb.from('실적집계').select('*').eq('date',data.date))||[]) }; }
+      case 'getPerfSummary': { return { ok:true, rows:(_chk(await sb.from('실적집계').select('*').gte('date',data.startDate).lte('date',data.endDate))||[]) }; }
+
+      // ── 연차 ──
+      case 'saveAnnual': {
+        var a=data.a||{}; var aid='a_'+a.empId+'_'+a.date;
+        _chk(await sb.from('연차').delete().eq('id',aid));
+        if(a.type) _chk(await sb.from('연차').insert({ id:aid, empId:a.empId, empName:a.empName||'', date:a.date, type:a.type }));
+        return { ok:true };
+      }
+      case 'getAnnualsArchive': return { ok:true, annuals:[] };
+      case 'getAnnuals': {
+        var qa=sb.from('연차').select('*');
+        if(data.ym){ var rga=_ymRange(data.ym); qa=qa.gte('date',rga.start).lt('date',rga.next); }
+        return { ok:true, annuals:(_chk(await qa)||[]) };
+      }
+
+      // ── 팀카드 ──
+      case 'getTeamCards': return { ok:true, cards:(_chk(await sb.from('팀카드').select('*'))||[]) };
+      case 'addTeamCard': {
+        var c=data.card||{}; var cid='card_'+Date.now();
+        _chk(await sb.from('팀카드').insert({ id:cid, name:c.name||'', issuer:c.issuer||'', last4:c.last4||'', note:c.note||'', active:true }));
+        return { ok:true, id:cid };
+      }
+      case 'updateTeamCard': { _chk(await sb.from('팀카드').update(data.fields||{}).eq('id',data.id)); return { ok:true }; }
+      case 'deleteTeamCard': { _chk(await sb.from('팀카드').delete().eq('id',data.id)); return { ok:true }; }
+      case 'getTeamCardUsage': {
+        var qu=sb.from('팀카드사용내역').select('*');
+        if(data.yearMonth){ var rgu=_ymRange(data.yearMonth); qu=qu.gte('date',rgu.start).lt('date',rgu.next); }
+        return { ok:true, rows:(_chk(await qu)||[]) };
+      }
+      case 'addTeamCardUsage': {
+        var tr=data.row||{}; var tid='tcu_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+        _chk(await sb.from('팀카드사용내역').insert({ id:tid, yearMonth:tr.yearMonth||'', date:tr.date||'', cardId:tr.cardId||'', empId:tr.empId||'', empName:tr.empName||'', desc:tr.desc||'', amount:tr.amount||0, note:tr.note||'' }));
+        return { ok:true, id:tid };
+      }
+      case 'updateTeamCardUsage': { _chk(await sb.from('팀카드사용내역').update(data.fields||{}).eq('id',data.id)); return { ok:true }; }
+      case 'deleteTeamCardUsage': { _chk(await sb.from('팀카드사용내역').delete().eq('id',data.id)); return { ok:true }; }
+      case 'getTeamCardBudget': { var sB=(await supaDispatch('getSettings',{})).settings||{}; var mB=sB.teamCardBudget||{}; return { ok:true, amount: mB[data.yearMonth]||0 }; }
+      case 'saveTeamCardBudget': { var sS=(await supaDispatch('getSettings',{})).settings||{}; var mS=sS.teamCardBudget||{}; mS[data.yearMonth]=data.amount; await supaDispatch('saveSettings',{teamCardBudget:mS}); return { ok:true }; }
+
+      // ── IP 그룹 ──
+      case 'getIPGroups': {
+        var ig=(_chk(await sb.from('IP그룹').select('*'))||[]).map(function(x){ x.entries=_jarr(x.entries); return x; });
+        return { ok:true, groups:ig };
+      }
+      case 'saveIPGroup': {
+        var g=data.group||{}; var gid=g.id||('g_'+Date.now());
+        _chk(await sb.from('IP그룹').delete().eq('id',gid));
+        _chk(await sb.from('IP그룹').insert({ id:gid, type:g.type||'', name:g.name||'', prefix:g.prefix||'', range:g.range||'', subnet:g.subnet||'', gateway:g.gateway||'', dns:g.dns||'', dns2:g.dns2||'', entries:g.entries||[] }));
+        return { ok:true };
+      }
+      case 'deleteIPGroup': { _chk(await sb.from('IP그룹').delete().eq('id',data.id)); return { ok:true }; }
+
+      // ── 변경로그 / 접속이력 ──
+      case 'addChangeLog': { _chk(await sb.from('변경로그').insert({ dt:data.dt, by:data.by, desc:data.desc })); return { ok:true }; }
+      case 'getChangeLogs': {
+        var qc=sb.from('변경로그').select('*').order('dt',{ascending:false});
+        if(data.days){ var cf=new Date(); cf.setDate(cf.getDate()-data.days); qc=qc.gte('dt', cf.toISOString().slice(0,10)); }
+        return { ok:true, logs:(_chk(await qc)||[]) };
+      }
+      case 'getChangeLogsArchive': return { ok:true, logs:[] };
+      case 'getChangeLogRange': {
+        return { ok:true, logs:(_chk(await sb.from('변경로그').select('*').gte('dt',data.startDate).lte('dt',data.endDate+' 23:59:59').order('dt',{ascending:false}))||[]) };
+      }
+      case 'logAccess': { _chk(await sb.from('접속이력').insert({ dt:_nowStr(), empId:data.empId||'', empName:data.empName||'', ip:data.ip||'' })); return { ok:true }; }
+      case 'getAccessLogArchive': return { ok:true, logs:[] };
+      case 'getAccessLog': {
+        return { ok:true, logs:(_chk(await sb.from('접속이력').select('*').gte('dt',data.startDate).lte('dt',data.endDate+' 23:59:59').order('dt',{ascending:false}))||[]) };
+      }
+
+      // ── 연차 공지 ──
+      case 'getCalNotice': {
+        var cn=_chk(await sb.from('연차공지').select('*').limit(10))||[]; var ntc='';
+        cn.forEach(function(r){ if(r.notice) ntc=r.notice; });
+        return { ok:true, notice:ntc };
+      }
+      case 'saveCalNotice': {
+        var upc=_chk(await sb.from('연차공지').update({ notice:data.notice }).eq('id',1).select());
+        if(!upc||!upc.length) _chk(await sb.from('연차공지').insert({ id:1, notice:data.notice }));
+        return { ok:true };
+      }
+
+      // ── 공지사항 ──
+      case 'getNotices': {
+        var notices=_chk(await sb.from('공지사항').select('*'))||[];
+        var imgs=_chk(await sb.from('공지이미지').select('*'))||[];
+        var byN={};
+        imgs.forEach(function(im){ var nid=im.noticeId; if(!nid) return; var sq=Number(im.seq)||0, pt=Number(im.part)||0; (byN[nid]=byN[nid]||{}); (byN[nid][sq]=byN[nid][sq]||[]); byN[nid][sq][pt]=im.dataUrl||''; });
+        notices.forEach(function(n){ var m=byN[n.id]||{}; var seqs=Object.keys(m).map(Number).sort(function(a,b){return a-b;}); n.images=seqs.map(function(s){ return (m[s]||[]).join(''); }).filter(function(u){ return u; }); n.pinned=(n.pinned===true||n.pinned==='Y'); });
+        notices.sort(function(a,b){ if(a.pinned!==b.pinned) return a.pinned?-1:1; return String(b.dt).localeCompare(String(a.dt)); });
+        return { ok:true, notices:notices };
+      }
+      case 'saveNotice': {
+        var n=data.notice||{}; var nid=n.id||('notice_'+Date.now()); var ndt=_nowStr();
+        if(n.id){ var exn=_chk(await sb.from('공지사항').select('dt').eq('id',n.id).limit(1)); if(exn&&exn.length&&exn[0].dt) ndt=exn[0].dt; _chk(await sb.from('공지사항').delete().eq('id',n.id)); }
+        _chk(await sb.from('공지사항').insert({ id:nid, dt:ndt, authorId:n.authorId||'', author:n.author||'', title:n.title||'', body:n.body||'', pinned:!!n.pinned }));
+        _chk(await sb.from('공지이미지').delete().eq('noticeId',nid));
+        var imgRows=(n.images||[]).map(function(dataUrl,seq){ return { id:nid+'_'+seq+'_0', noticeId:nid, seq:seq, part:0, dataUrl:String(dataUrl||'') }; });
+        if(imgRows.length) _chk(await sb.from('공지이미지').insert(imgRows));
+        return { ok:true, id:nid };
+      }
+      case 'deleteNotice': { _chk(await sb.from('공지사항').delete().eq('id',data.id)); _chk(await sb.from('공지이미지').delete().eq('noticeId',data.id)); return { ok:true }; }
+
+      // ── 자리 배치 ──
+      case 'getSeats': {
+        var sr=_chk(await sb.from('자리배치').select('*'))||[];
+        if(!sr.length){ _chk(await sb.from('자리배치').insert(_SEAT_DEFAULTS)); sr=_SEAT_DEFAULTS.slice(); }
+        var seatMap={}; sr.forEach(function(r){ seatMap[r.id]={ label:r.label, empId:r.empId||'' }; });
+        return { ok:true, seats:seatMap };
+      }
+      case 'saveAllSeats': {
+        var seats=data.seats||{};
+        var sj=Object.keys(seats).map(function(sid){ return sb.from('자리배치').update({ empId:seats[sid] }).eq('id',sid); });
+        var sres=await Promise.all(sj);
+        for(var si=0; si<sres.length; si++){ if(sres[si].error) throw new Error(sres[si].error.message); }
+        return { ok:true };
+      }
+
+      // ── 설정 ──
+      case 'getSettings': {
+        var setr=_chk(await sb.from('설정').select('*'))||[];
+        var settings={};
+        setr.forEach(function(r){ var v=r.value; if(typeof v==='string'){ var t=v.trim(); if(t.charAt(0)==='{'||t.charAt(0)==='['){ try{ v=JSON.parse(t); }catch(e){} } } settings[r.key]=v; });
+        return { ok:true, settings:settings };
+      }
+      case 'saveSettings': {
+        var existing=_chk(await sb.from('설정').select('key'))||[];
+        var have={}; existing.forEach(function(r){ have[r.key]=1; });
+        var toInsert=[], jobs2=[];
+        Object.keys(data).forEach(function(k){
+          var v=data[k]; if(v!==null && typeof v==='object') v=JSON.stringify(v); else v=(v==null?'':String(v));
+          if(have[k]) jobs2.push(sb.from('설정').update({ value:v }).eq('key',k));
+          else toInsert.push({ key:k, value:v });
+        });
+        if(toInsert.length) jobs2.push(sb.from('설정').insert(toInsert));
+        var sr2=await Promise.all(jobs2);
+        for(var xi=0;xi<sr2.length;xi++){ if(sr2[xi].error) throw new Error(sr2[xi].error.message); }
+        return { ok:true };
+      }
+
+      default: return { ok:false, error:'알 수 없는 액션: '+action };
+    }
+  }catch(e){
+    return { ok:false, error:(e&&e.message)||String(e) };
+  }
+}
+
 function api(action, data){
-  if(!GAS_URL) return Promise.resolve(demo(action, data));
+  if(!window.sb) return Promise.resolve(demo(action, data));
 
   // 쓰기 액션이면 관련 캐시 무효화
   cacheInvalidate(action);
@@ -1370,26 +1653,20 @@ function api(action, data){
     if(cached) return Promise.resolve(cached);
   }
 
-  // 읽기 액션: GET + 재시도 + 동일요청 중복 합치기(in-flight coalescing)
+  // 읽기 액션: 동일요청 중복 합치기(in-flight coalescing) + 성공 시 캐시
   if(isGet){
     if(_inflight[key]) return _inflight[key];
-    var params=new URLSearchParams({action:action,data:JSON.stringify(data||{})});
-    var p=gasRead(GAS_URL+'?'+params.toString()).then(function(res){
+    var p=supaDispatch(action,data).then(function(res){
       if((isCache||isShort)&&res&&res.ok) cacheSet(key,res);
       delete _inflight[key];
       return res;
-    }, function(e){ delete _inflight[key]; return { ok:false, error:'GAS 연결 실패: '+(e&&e.message||e) }; });
+    }, function(e){ delete _inflight[key]; return { ok:false, error:'연결 실패: '+(e&&e.message||e) }; });
     _inflight[key]=p;
     return p;
   }
 
-  // 쓰기 액션: 작은 요청은 GET으로 보낸다.
-  // POST는 GAS가 302 리다이렉트를 응답하면서 요청 본문이 유실돼 서버가 "파라미터없음"을
-  // 돌려주는 경우가 있다(저장은 됐는데 오류로 뜨는 원인). GET은 파라미터가 URL에 있어 안전.
-  // 데이터가 커서 URL 길이 제한(~2000자)을 넘는 요청만 POST로 보낸다.
-  var getUrl=GAS_URL+'?'+new URLSearchParams({action:action,data:JSON.stringify(data||{})}).toString();
-  if(getUrl.length<=1800) return gasWriteGet(getUrl);
-  return gasWrite(JSON.stringify(Object.assign({action:action},data||{})));
+  // 쓰기 액션
+  return supaDispatch(action,data);
 }
 
 function demo(action,data){
@@ -1528,6 +1805,7 @@ function addLog(desc){
 
 function doLogout(){
   CU=null; sessionStorage.removeItem('cu');
+  if(window.sb) try{ sb.auth.signOut(); }catch(e){}
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('lid').value='';
@@ -3775,7 +4053,18 @@ document.addEventListener('DOMContentLoaded',function(){
   if(seatsSave) seatsSave.addEventListener('click',saveAllSeats);
   // 모달 배경 클릭해도 닫히지 않음 (저장/취소 버튼으로만 닫힘)
   var s=sessionStorage.getItem('cu');
-  if(s){try{CU=JSON.parse(s);showApp();}catch(err){sessionStorage.removeItem('cu');}}
+  if(s){
+    try{
+      CU=JSON.parse(s);
+      if(window.sb){
+        // Supabase 세션(토큰)이 살아있을 때만 자동 로그인 복원. 없으면 로그인 화면 유지.
+        sb.auth.getSession().then(function(r){
+          if(r&&r.data&&r.data.session){ showApp(); }
+          else { CU=null; sessionStorage.removeItem('cu'); }
+        }).catch(function(){ CU=null; sessionStorage.removeItem('cu'); });
+      } else { showApp(); }
+    }catch(err){ sessionStorage.removeItem('cu'); }
+  }
 });
 
 // ── 내 실적 ─────────────────────────────────
