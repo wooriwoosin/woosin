@@ -1123,7 +1123,8 @@ var CACHE_INVALIDATE={
 };
 // 새로고침해도 캐시가 유지되도록 localStorage에도 보관한다 (자주 쓰는 실적/연차/설정 화면 체감속도↑).
 // 단, 계정정보가 든 직원목록(getAllUsers/getEmployees)은 디스크에 남기지 않고 메모리 캐시만 사용.
-var PERSIST_PREFIX='wc1_';
+var PERSIST_PREFIX='wc2_'; // Supabase 전환 시 wc1_→wc2_ (GAS 시절 캐시 무효화)
+try{ for(var _oi=localStorage.length-1;_oi>=0;_oi--){ var _ok=localStorage.key(_oi); if(_ok&&_ok.indexOf('wc1_')===0) localStorage.removeItem(_ok); } }catch(e){}
 var PERSIST_DENY={getAllUsers:1,getEmployees:1};
 function _canPersist(key){ return !PERSIST_DENY[String(key).split(':')[0]]; }
 function cacheGet(key,short){
