@@ -1364,7 +1364,29 @@ var SUPA_KEY='sb_publishable_q3SLb7fToGXt9J4o7tkYOw_QArw7mQ9'; // 공개용 키(
 var AUTH_EMAIL_DOMAIN='woosin.local';
 var DEFAULT_PW='woosin-blank-0000'; // 비번 없는 직원용 기본비번(직원은 몰라도 됨 - 빈칸이면 자동 사용)
 var sb=null;
-try{ if(window.supabase&&window.supabase.createClient){ sb=window.supabase.createClient(SUPA_URL,SUPA_KEY); window.sb=sb; } }
+// 네트워크가 막혀 응답이 안 올 때 무한 대기("확인 중..." 멈춤) 대신 20초 뒤 오류로 끝내기
+function _fetchTimeout(url, opts){
+  opts=Object.assign({}, opts||{});
+  var ctrl=new AbortController();
+  var t=setTimeout(function(){ ctrl.abort(); }, 20000);
+  if(opts.signal){ if(opts.signal.aborted) ctrl.abort(); else opts.signal.addEventListener('abort', function(){ ctrl.abort(); }); }
+  opts.signal=ctrl.signal;
+  return fetch(url, opts).then(function(r){ clearTimeout(t); return r; }, function(e){
+    clearTimeout(t);
+    if(e&&e.name==='AbortError') throw new Error('서버 응답 없음(20초). 회사 네트워크가 Supabase 접속을 막고 있을 수 있어요.');
+    throw new Error('서버 연결 실패: '+(e&&e.message||e));
+  });
+}
+try{
+  if(window.supabase&&window.supabase.createClient){
+    sb=window.supabase.createClient(SUPA_URL,SUPA_KEY,{
+      global:{ fetch:_fetchTimeout },
+      // 브라우저 탭 간 잠금(navigator.locks) 때문에 로그인이 멈추는 알려진 문제 회피
+      auth:{ persistSession:true, autoRefreshToken:true, lock:function(name, timeout, fn){ return fn(); } }
+    });
+    window.sb=sb;
+  } else { console.error('Supabase 라이브러리를 불러오지 못했습니다(CDN 차단 가능성).'); }
+}
 catch(e){ console.error('Supabase 초기화 실패',e); }
 
 function _loginEmail(id){ return String(id||'').trim().toLowerCase()+'@'+AUTH_EMAIL_DOMAIN; }
@@ -1395,7 +1417,12 @@ async function supaDispatch(action, data){
       // ── 인증 ──
       case 'login': {
         var r=await sb.auth.signInWithPassword({ email:_loginEmail(data.id), password: data.pw?String(data.pw):DEFAULT_PW });
-        if(r.error) return { ok:false, error:'아이디 또는 비밀번호가 올바르지 않습니다.' };
+        if(r.error){
+          var em=r.error.message||'';
+          console.error('로그인 오류:', r.error);
+          if(/invalid login credentials/i.test(em)) return { ok:false, error:'아이디 또는 비밀번호가 올바르지 않습니다.' };
+          return { ok:false, error:'로그인 서버 오류: '+em };
+        }
         var rows=_chk(await sb.from('직원').select('*').eq('id',String(data.id).trim()).limit(1));
         if(!rows||!rows.length) return { ok:false, error:'직원 정보를 찾을 수 없습니다. 관리자에게 문의하세요.' };
         var u=rows[0]; u.skills=_skillsObj(u.skills); delete u.pw;
@@ -1632,12 +1659,13 @@ async function supaDispatch(action, data){
       default: return { ok:false, error:'알 수 없는 액션: '+action };
     }
   }catch(e){
+    console.error('[supa]', action, e);
     return { ok:false, error:(e&&e.message)||String(e) };
   }
 }
 
 function api(action, data){
-  if(!window.sb) return Promise.resolve(demo(action, data));
+  if(!window.sb) return Promise.resolve({ ok:false, error:'Supabase 라이브러리를 불러오지 못했습니다. (인터넷/회사망에서 cdn.jsdelivr.net 차단 여부 확인)' });
 
   // 쓰기 액션이면 관련 캐시 무효화
   cacheInvalidate(action);
