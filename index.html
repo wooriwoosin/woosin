@@ -1560,11 +1560,11 @@ function showApp(){
     renderTabs(adminTabs);
     loadGlobalSettings(function(){
       refreshEmpNameMap();
-      var lastTab=sessionStorage.getItem('lastTab')||'allperf';
+      var lastTab=sessionStorage.getItem('lastTab')||'notice';
       var validTabs=['notice','allperf','perfreport','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
       if(CU.teamCardAdmin) validTabs.push('teamcard');
       if(CU.superAdmin) validTabs.push('logs');
-      switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
+      switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'notice');
     });
   } else {
     rbg.textContent='직원'; rbg.className='rbg rb-e';
@@ -1580,9 +1580,9 @@ function showApp(){
     // 설정 탭은 직원에게 숨김
     loadGlobalSettings(function(){
       refreshEmpNameMap();
-      var lastTab=sessionStorage.getItem('lastTab')||'allperf';
+      var lastTab=sessionStorage.getItem('lastTab')||'notice';
       var validTabs=['notice','allperf','perfreport','cal','seats','myinfo','ip'];
-      switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'allperf');
+      switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'notice');
     });
   }
 }
@@ -3429,6 +3429,18 @@ function addEmp(){
 
 // ── IP 현황 ───────────────────────────────────
 // renderIPG: IP 그룹 카드 렌더링 (담당자 선택 시 코스/서브 아이디 표시)
+function ipgDedupeEntries(entries){
+  // IP 끝자리(last)별로 1건만 유지 — 쌓인 중복줄 정리. 정보(담당자/메모) 있는 항목을 우선 보존.
+  var map={}, order=[];
+  (entries||[]).forEach(function(en){
+    if(!en) return;
+    var k=String(en.last==null?'':en.last).trim();
+    if(!k) return;
+    if(!(k in map)){ map[k]=en; order.push(k); }
+    else { var cur=map[k]; if((!cur.empId&&!cur.memo)&&(en.empId||en.memo)) map[k]=en; }
+  });
+  return order.map(function(k){return map[k];});
+}
 function renderIPG(g, empMap, isA){
   var card=document.createElement('div');
   card.className='card'; card.style.marginBottom='12px';
@@ -3469,7 +3481,8 @@ function renderIPG(g, empMap, isA){
   tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
   tbl.innerHTML='<thead><tr style="background:#F7F8FA"><th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--b);width:90px">IP 주소<\/th><th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--b)">담당자<\/th><th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--b)">코스 ID<\/th><th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--b)">서브 ID<\/th><th style="padding:5px 6px;text-align:left;border-bottom:1px solid var(--b)">메모<\/th><\/tr><\/thead>';
   var tb=document.createElement('tbody');
-  (g.entries||[]).forEach(function(en){
+  var _ents=ipgDedupeEntries(g.entries);
+  _ents.forEach(function(en){
     var emp=empMap[en.empId]||null;
     var tr=document.createElement('tr');
     var ip=g.prefix+en.last;
@@ -3487,7 +3500,7 @@ function renderIPG(g, empMap, isA){
       '<td style="padding:5px 6px;color:var(--tm)">'+(en.memo||'')+'<\/td>';
     tb.appendChild(tr);
   });
-  if(!(g.entries&&g.entries.length)){
+  if(!_ents.length){
     var emtr=document.createElement('tr');
     emtr.innerHTML='<td colspan="5" style="padding:10px;text-align:center;color:var(--tm)">IP 없음<\/td>';
     tb.appendChild(emtr);
@@ -3567,7 +3580,7 @@ function openEditIPG(id){
     document.getElementById('ipg-dns').value=g.dns||'';
     document.getElementById('ipg-dns2').value=g.dns2||'';
     document.getElementById('ipg-entries').innerHTML='';
-    fillIPGUsers().then(function(){(g.entries||[]).forEach(addIPRow);openM('m-ipg');});
+    fillIPGUsers().then(function(){ipgDedupeEntries(g.entries).forEach(function(en){addIPRow(en);});openM('m-ipg');});
   });
 }
 // ── 공용 직급/등급 정렬 헬퍼 ─────────────────────────────────
@@ -3611,8 +3624,9 @@ function saveIPG(){
     if(!last) return;
     entries.push({last:last,empId:row.querySelector('.ipg-emp').value,memo:row.querySelector('.ipg-memo').value.trim()});
   });
+  entries=ipgDedupeEntries(entries); // 중복 IP 제거 (쌓인 중복줄 정리)
   var group={
-    id:_editGrpId||null,type:type,
+    id:_editGrpId||('g_'+Date.now()+'_'+Math.floor(Math.random()*100000)),type:type, // 새 그룹도 id를 미리 고정 → 재시도해도 덮어쓰기(중복 카드 방지)
     name:document.getElementById('ipg-name').value.trim(),
     prefix:prefix,
     range:document.getElementById('ipg-range').value.trim(),
