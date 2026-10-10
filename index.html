@@ -1285,16 +1285,17 @@ function dispName(empId,fallback){
   if(empId&&_empNameById[empId]) return _empNameById[empId];
   return fallback||'';
 }
-// 근속기간 "N년 M개월차" (입사일~오늘, 퇴사자는 퇴사일까지). 꽉 채운 기간 기준.
+// 근속기간 "N년 M개월차" (입사월~이번달, 퇴사자는 퇴사월까지). 일자는 무시하고 입사월을 1개월차로 센다.
+// 예: 2026-04-04 입사 → 2026-10월이면 4~10월 = 7개월차
 function tenureStr(hire, endStr){
   if(!hire) return '';
   var h=String(hire).slice(0,10).split('-').map(Number);
   if(h.length<3||h.some(isNaN)) return '';
   var t=endStr?String(endStr).slice(0,10).split('-').map(Number):null;
   var now=new Date();
-  var ey=t&&!t.some(isNaN)?t[0]:now.getFullYear(), em=t&&!t.some(isNaN)?t[1]:now.getMonth()+1, ed=t&&!t.some(isNaN)?t[2]:now.getDate();
-  var months=(ey-h[0])*12+(em-h[1]); if(ed<h[2]) months--;
-  if(months<0) return '입사 예정';
+  var ey=t&&!t.some(isNaN)?t[0]:now.getFullYear(), em=t&&!t.some(isNaN)?t[1]:now.getMonth()+1;
+  var months=(ey-h[0])*12+(em-h[1])+1;
+  if(months<1) return '입사 예정';
   return Math.floor(months/12)+'년 '+(months%12)+'개월차';
 }
 function refreshEmpNameMap(cb){
