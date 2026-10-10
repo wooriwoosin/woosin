@@ -225,6 +225,11 @@ table.pt td.otc{background:#FFF8F8;}
 .pa-retired-block summary{background:#EEE;color:var(--tm);list-style:none;}
 .pa-retired-block summary::-webkit-details-marker{display:none;}
 .pa-retired-block .pa-emp-card{background:#F5F5F5;}
+.pa-team-fold summary{list-style:none;user-select:none;}
+.pa-team-fold summary::-webkit-details-marker{display:none;}
+.pa-team-fold summary::before{content:'▶ ';font-size:11px;}
+.pa-team-fold[open] summary::before{content:'▼ ';}
+.pa-team-fold:not([open]) summary{border-radius:8px;}
 .pa-team-hd{font-size:13px;font-weight:800;color:#fff;background:var(--tp);padding:8px 14px;border-radius:8px 8px 0 0;}
 .pa-emp-card{background:var(--s);border:1px solid var(--b);border-top:none;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
 .pa-team-block .pa-emp-card:last-child{border-radius:0 0 8px 8px;}
@@ -1426,7 +1431,7 @@ async function supaDispatch(action, data){
         }
         var rows=_chk(await sb.from('직원').select('*').eq('id',String(data.id).trim()).limit(1));
         if(!rows||!rows.length) return { ok:false, error:'직원 정보를 찾을 수 없습니다. 관리자에게 문의하세요.' };
-        var u=rows[0]; u.skills=_skillsObj(u.skills); delete u.pw;
+        var u=rows[0]; u.skills=_skillsObj(u.skills); _normEmpBools(u); delete u.pw;
         return { ok:true, user:u };
       }
 
@@ -1435,13 +1440,18 @@ async function supaDispatch(action, data){
       case 'getAllUsers': {
         var list=_chk(await sb.from('직원').select('*'))||[];
         if(action==='getEmployees') list=list.filter(function(r){ return r.role!=='admin'; });
-        list=list.map(function(u){ var s=Object.assign({},u); delete s.pw; s.skills=_skillsObj(s.skills); return s; });
+        list=list.map(function(u){ var s=Object.assign({},u); delete s.pw; s.skills=_skillsObj(s.skills); _normEmpBools(s); return s; });
+        // 직원 등록순(seq)으로 정렬 → 신입이 맨 아래. seq 컬럼이 아직 없으면 원래 순서 유지(안정 정렬).
+        list=list.map(function(s,i){ return {s:s,i:i}; }).sort(function(a,b){
+          var sa=(a.s.seq==null?Infinity:Number(a.s.seq)), sb2=(b.s.seq==null?Infinity:Number(b.s.seq));
+          return sa!==sb2 ? (sa<sb2?-1:1) : a.i-b.i;
+        }).map(function(x){ return x.s; });
         return { ok:true, employees:list };
       }
       case 'getUser': {
         var ur=_chk(await sb.from('직원').select('*').eq('id',data.id).limit(1));
         if(!ur||!ur.length) return { ok:false, error:'직원을 찾을 수 없습니다.' };
-        var uu=ur[0]; uu.skills=_skillsObj(uu.skills); return { ok:true, user:uu };
+        var uu=ur[0]; uu.skills=_skillsObj(uu.skills); _normEmpBools(uu); return { ok:true, user:uu };
       }
       case 'addEmployee': {
         var emp=Object.assign({}, data.emp||{});
@@ -4368,6 +4378,23 @@ function paFindTvUpsellStaff(rows,targetDate){
   entries.sort(function(a,b){return b.ts.localeCompare(a.ts);});
   return {name:entries[0].name,ts:entries[0].ts,content:entries[0].content};
 }
+// 같은 고객의 상품행을 묶는 키(마스킹 주민번호 + 이름 앞부분). 생년월일만 같은 다른 고객과 섞이지 않게 이름까지 본다.
+function paSibKey(r){ return String(r['주민번호']||'').trim()+'|'+String(r['고객명']||'').split('/')[0].trim(); }
+// 담당자 메모가 해당 상품행들에 없을 때의 보조 판별: 같은 고객의 "다른 상품행"에 적힌 메모 중
+// 이 파트와 관련된 내용만 후보로 인정한다. (예: 인터넷 업셀 메모를 TV약갱 행에 적어둔 경우,
+// TV약갱 처리메모를 인업셀 행에 적어둔 경우) - 본래 판별에 실패했을 때만 쓰는 폴백이라 기존 판별결과는 바뀌지 않는다.
+function paFindStaffFromSiblings(g,targetDate){
+  var own=g.rows;
+  var sibs=(g.sibRows||[]).filter(function(r){ return own.indexOf(r)===-1 && !paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력']); });
+  if(!sibs.length) return null;
+  var yu={}; own.concat(sibs).forEach(function(r){ if(r['유치자']) yu[r['유치자']]=true; });
+  var rel=g.renewKind==='tvrenew' ? /약갱|약정갱신|약정만료|티\s*-|티약/ : /인터넷|인업|인약/;
+  var entries=[];
+  sibs.forEach(function(r){ paExtractEntries(r['고객이력']).forEach(function(e){ entries.push(e); }); });
+  entries=entries.filter(function(e){ return paIsInternalName(e.name)&&!yu[e.name]&&rel.test(e.content); });
+  var best=paPickBestEntry(entries,null,targetDate);
+  return best?{name:best.name,ts:best.ts,content:'(같은 고객 다른 상품행 메모) '+best.content}:null;
+}
 // 유선 상품명 분류: KT 계열 + 유선기타_(KT-biz)*만 포함, 그 외(타통신사/렌탈/모바일/부가상품/정산관련 등)는 전부 제외(null)
 function paClassifyWiredProduct(name){
   name=name||'';
@@ -4430,6 +4457,7 @@ function paAggregate(){
         return;
       }
       var best=g.isTvUpsell?paFindTvUpsellStaff(eligibleRows,targetDate):paFindStaffFromRows(eligibleRows,targetDate);
+      if(!best && (g.renewKind==='net'||g.renewKind==='tvrenew')) best=paFindStaffFromSiblings(g,targetDate);
       if(!best){ PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':'담당자 메모 없음/판별 불가',key:key}); return; }
       if(cat==='약정갱신'){
         // 약정갱신은 한 고객 안에서도 파트별(renewKind)로 나눠 각 파트당 1건씩만 센다.
@@ -4449,6 +4477,10 @@ function paAggregate(){
     });
   }
   var wiredGroups={};
+  // 같은 고객의 전체 상품행 색인 (다른 상품행 메모 보조판별용) - 집계에서 빠지는 행(메인파일 TV약갱 등)도 포함
+  var wiredSib={}, tvSib={};
+  PA_WIRED_ROWS.forEach(function(r){ (wiredSib[paSibKey(r)]=wiredSib[paSibKey(r)]||[]).push(r); });
+  PA_TVRENEW_ROWS.forEach(function(r){ (tvSib[paSibKey(r)]=tvSib[paSibKey(r)]||[]).push(r); });
   // 메인 유선접수 파일 처리.
   // 약정갱신은 한 고객 안에서도 파트를 나눈다:
   //   · net(인터넷 파트)   : KT_인_업셀링/전환 + KT_인터넷(약정갱신) — 동시작업이라 묶어서 1건
@@ -4470,7 +4502,8 @@ function paAggregate(){
     } else {
       key=custKey+'|'+cat;
     }
-    (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:cat,renewKind:renewKind,isTvUpsell:isTvUpsell}).rows.push(r);
+    (wiredGroups[key]=wiredGroups[key]||{rows:[],sibRows:[],name:r['고객명'],cat:cat,renewKind:renewKind,isTvUpsell:isTvUpsell}).rows.push(r);
+    wiredGroups[key].sibRows=wiredSib[paSibKey(r)]||[];
   });
   // 개통일 기준 파일: KT_TV(약정갱신)이고 개통상태 "개통완료"이며 개통일=집계일인 행만 티약갱으로 집계.
   // (개통일 파일엔 유선·무선·다른 상품이 다 섞여있지만, 여기서는 TV약정갱신 개통분만 뽑는다.
@@ -4483,7 +4516,8 @@ function paAggregate(){
   tvRenewRowsForDate.forEach(function(r){
     var custKey=(r['주민번호']||'').trim()||r['고객명'];
     var key=custKey+'|약정갱신|tvrenew';
-    (wiredGroups[key]=wiredGroups[key]||{rows:[],name:r['고객명'],cat:'약정갱신',renewKind:'tvrenew',isTvUpsell:false}).rows.push(r);
+    (wiredGroups[key]=wiredGroups[key]||{rows:[],sibRows:[],name:r['고객명'],cat:'약정갱신',renewKind:'tvrenew',isTvUpsell:false}).rows.push(r);
+    wiredGroups[key].sibRows=tvSib[paSibKey(r)]||[];
   });
   var byCat={};
   Object.keys(wiredGroups).forEach(function(key){ var cat=wiredGroups[key].cat; (byCat[cat]=byCat[cat]||{})[key]=wiredGroups[key]; });
@@ -4979,6 +5013,10 @@ function loadAllPerfNewRender(){
           '<div class="pa-counts">'+pill(p.유선신규,'유선신규','pa-c-new')+pill(p.약정갱신,apRenewLabel,'pa-c-renew')+pill(p.유선기타,'유선기타','pa-c-etc')+pill(p.기가아이즈,'기가아이즈','pa-c-giga')+pill(p.무선,'무선','pa-c-mobile')+pill(p.상품권,'상품권','pa-c-giga')+callPills+'</div>'+
         '</div>';
       }).join('');
+      // 우신영업사업부는 기본 접힘(클릭해서 펼치기)
+      if(team==='우신영업사업부'){
+        return '<details class="pa-team-block pa-team-fold"><summary class="pa-team-hd" style="cursor:pointer">'+team+' ('+teams[team].length+'명) — 클릭하여 펼치기/접기</summary>'+cards+'</details>';
+      }
       return '<div class="pa-team-block"><div class="pa-team-hd">'+team+'</div>'+cards+'</div>';
     }).join('');
     if(statusEl) statusEl.textContent=date+' 게시 데이터 '+(perfRes.ok?perfRes.rows.length:0)+'명분';
@@ -5012,7 +5050,7 @@ function renderAccTable(){
     '<th>아이디</th><th>비밀번호</th></tr>';
   var body=ACC_EMP.map(function(e){
     var retiredStyle=e.retired?' style="background:#F2F2F2;color:var(--tm)"':'';
-    var disposed=e.acctDisposed==='Y';
+    var disposed=(e.acctDisposed===true||e.acctDisposed==='Y');
     return '<tr'+retiredStyle+'><td style="font-weight:700;white-space:nowrap'+(e.retired?';color:var(--tm)':'')+'">'+e.name+'</td>'+
       ACC_FIELDS.map(function(f){
         return '<td><input type="text" data-emp="'+e.id+'" data-f="'+f+'" value="'+(e[f]||'').toString().replace(/"/g,'&quot;')+'" style="width:86px;padding:4px 5px;border:1.5px solid var(--b);border-radius:5px;font-size:11.5px'+(e.retired?';background:#EDEDED':'')+'"></td>';
@@ -5028,7 +5066,7 @@ function renderAccTable(){
       api('updateEmpAdmin',{id:btn.dataset.emp,fields:{acctDisposed:newVal}}).then(function(res){
         if(!res.ok){ alert(res.error||'저장 실패'); btn.textContent=btn.dataset.cur; return; }
         var emp=ACC_EMP.find(function(x){return x.id===btn.dataset.emp;});
-        if(emp) emp.acctDisposed=newVal;
+        if(emp) emp.acctDisposed=(newVal==='Y');
         addLog((emp?emp.name:'')+' 계정폐기 '+newVal+'로 변경');
         renderAccTable();
       });
