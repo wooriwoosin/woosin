@@ -1285,6 +1285,18 @@ function dispName(empId,fallback){
   if(empId&&_empNameById[empId]) return _empNameById[empId];
   return fallback||'';
 }
+// 근속기간 "N년 M개월차" (입사일~오늘, 퇴사자는 퇴사일까지). 꽉 채운 기간 기준.
+function tenureStr(hire, endStr){
+  if(!hire) return '';
+  var h=String(hire).slice(0,10).split('-').map(Number);
+  if(h.length<3||h.some(isNaN)) return '';
+  var t=endStr?String(endStr).slice(0,10).split('-').map(Number):null;
+  var now=new Date();
+  var ey=t&&!t.some(isNaN)?t[0]:now.getFullYear(), em=t&&!t.some(isNaN)?t[1]:now.getMonth()+1, ed=t&&!t.some(isNaN)?t[2]:now.getDate();
+  var months=(ey-h[0])*12+(em-h[1]); if(ed<h[2]) months--;
+  if(months<0) return '입사 예정';
+  return Math.floor(months/12)+'년 '+(months%12)+'개월차';
+}
 function refreshEmpNameMap(cb){
   api('getAllUsers',{}).then(function(r){
     if(r.ok){
@@ -2475,7 +2487,7 @@ function loadMyInfo(){
     el.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">📋 기본 정보 (관리자 등록)<\/div>'+
-      ir('입사일',u.hire||'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+ir('내선번호',u.ext||'미등록')+'<\/div>'+
+      ir('입사일',u.hire?(u.hire+' ('+tenureStr(u.hire,u.retired?u.retiredAt:null)+')'):'-')+ir('연락처',u.phone||'-')+ir('팀',u.team||'-')+ir('직급/직책',u.rank||'-')+ir('고정업무',u.duty||'-')+ir('내선번호',u.ext||'미등록')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 메인 코스<\/div>'+
       ir('코스 아이디',u.cid1||'-')+irpw('코스 비밀번호',u.cpw1,'cpw1')+irpw('IDMS 비밀번호',u.idms1,'idms1')+'<\/div>'+
       '<div class="card" style="background:var(--bg)"><div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:10px">🔑 서브 코스<\/div>'+
@@ -3313,7 +3325,7 @@ function makeEmpCard(e, isAdmin){
       '<\/div>'+
     '<\/div>'+
     '<div style="font-size:12px;color:var(--ts);display:flex;gap:10px;flex-wrap:wrap">'+
-      '<span>📅 '+(e.hire||'-')+'<\/span><span>📱 '+(e.phone||'-')+'<\/span>'+
+      '<span>📅 '+(e.hire||'-')+(e.hire?' <b style="color:var(--ac)">('+tenureStr(e.hire,e.retired?e.retiredAt:null)+')<\/b>':'')+'<\/span><span>📱 '+(e.phone||'-')+'<\/span>'+
     '<\/div>';
   card.addEventListener('click',function(){openEmpD(e.id);});
   return card;
