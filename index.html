@@ -326,6 +326,27 @@ table.pt td.otc{background:#FFF8F8;}
         #pg-notice .nt-thumb img{width:100%;height:100%;object-fit:cover;}
         #pg-notice .nt-thumb button{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:18px;padding:0;}
         #pg-notice .nt-empty{text-align:center;color:var(--tm);padding:44px 0;}
+        /* 검색 */
+        #pg-notice .nt-search{position:relative;margin-bottom:14px;}
+        #pg-notice .nt-search input{width:100%;padding:10px 36px 10px 14px;border:1.5px solid var(--b);border-radius:10px;font-size:14px;font-family:inherit;background:var(--s);outline:none;}
+        #pg-notice .nt-search input:focus{border-color:var(--ac);}
+        #pg-notice .nt-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--tm);font-size:16px;cursor:pointer;padding:4px 6px;display:none;}
+        #pg-notice .nt-search-info{font-size:12.5px;color:var(--tm);margin:-6px 0 10px 2px;}
+        #pg-notice mark{background:#FFF1A8;color:inherit;padding:0 1px;border-radius:2px;}
+        /* 일반(고정 아닌) 공지: 작은 글씨 + 제목·작성자·일시 한 줄 */
+        #pg-notice .nt-card:not(.pinned){padding:12px 16px;border-radius:10px;margin-bottom:8px;box-shadow:none;}
+        #pg-notice .nt-card:not(.pinned) .nt-cardhead{align-items:center;}
+        #pg-notice .nt-card:not(.pinned) .nt-htext{display:flex;align-items:baseline;gap:12px;}
+        #pg-notice .nt-card:not(.pinned) .nt-title{font-size:14.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        #pg-notice .nt-card.open:not(.pinned) .nt-title{white-space:normal;}
+        #pg-notice .nt-card:not(.pinned) .nt-meta{margin-top:0;font-size:12px;white-space:nowrap;flex-shrink:0;}
+        #pg-notice .nt-card:not(.pinned) .nt-chev{margin-top:0;font-size:11px;}
+        #pg-notice .nt-card:not(.pinned) .nt-clip{margin-left:0;flex-shrink:0;white-space:nowrap;}
+        #pg-notice .nt-card:not(.pinned) .nt-body{font-size:14px;line-height:1.7;margin-top:12px;}
+        @media (max-width:520px){
+          #pg-notice .nt-card:not(.pinned) .nt-htext{flex-direction:column;align-items:flex-start;gap:2px;}
+          #pg-notice .nt-card:not(.pinned) .nt-title{width:100%;}
+        }
       </style>
       <div class="nt-wrap">
         <div class="nt-head">
@@ -347,6 +368,11 @@ table.pt td.otc{background:#FFF8F8;}
             <button class="btn btn-pr btn-sm" id="nt-save-btn">저장</button>
           </div>
         </div>
+        <div class="nt-search">
+          <input type="text" id="nt-search" placeholder="🔍 제목 · 내용 · 작성자로 검색" autocomplete="off">
+          <button type="button" class="nt-search-clear" id="nt-search-clear" title="검색 지우기">✕</button>
+        </div>
+        <div class="nt-search-info" id="nt-search-info" style="display:none"></div>
         <div id="nt-list"><div class="nt-empty">불러오는 중...</div></div>
       </div>
     </div>
@@ -5576,11 +5602,38 @@ function loadNotices(){
   });
 }
 
+// 공지 검색: 제목/내용/작성자에 검색어가 들어간 공지만 보여주고, 일치 부분을 형광 표시
+function ntHi(text, term){
+  text=String(text==null?'':text);
+  if(!term) return ntEsc(text);
+  var lower=text.toLowerCase(), lt=term.toLowerCase(), out='', pos=0, i;
+  while((i=lower.indexOf(lt,pos))!==-1){
+    out+=ntEsc(text.slice(pos,i))+'<mark>'+ntEsc(text.slice(i,i+term.length))+'</mark>';
+    pos=i+term.length;
+  }
+  return out+ntEsc(text.slice(pos));
+}
+function ntSearchTerm(){ var el=document.getElementById('nt-search'); return el?el.value.trim():''; }
 function renderNotices(notices){
   NOTICE_CACHE=notices;
   var isAdmin=CU&&CU.role==='admin';
   var list=document.getElementById('nt-list'); if(!list) return;
-  if(!notices.length){ list.innerHTML='<div class="nt-empty">등록된 공지가 없습니다.</div>'; return; }
+  var term=ntSearchTerm(), lt=term.toLowerCase();
+  var info=document.getElementById('nt-search-info');
+  var clr=document.getElementById('nt-search-clear'); if(clr) clr.style.display=term?'block':'none';
+  if(!notices.length){ if(info) info.style.display='none'; list.innerHTML='<div class="nt-empty">등록된 공지가 없습니다.</div>'; return; }
+  var bodyHit={};
+  if(term){
+    notices=notices.filter(function(n){
+      var inTitle=String(n.title||'').toLowerCase().indexOf(lt)!==-1;
+      var inAuthor=String(n.author||'').toLowerCase().indexOf(lt)!==-1;
+      var inBody=String(n.body||'').toLowerCase().indexOf(lt)!==-1;
+      if(inBody) bodyHit[n.id]=true;
+      return inTitle||inAuthor||inBody;
+    });
+    if(info){ info.style.display='block'; info.textContent='"'+term+'" 검색결과 '+notices.length+'건'; }
+    if(!notices.length){ list.innerHTML='<div class="nt-empty">검색 결과가 없습니다.</div>'; return; }
+  } else if(info){ info.style.display='none'; }
   list.innerHTML=notices.map(function(n){
     var imgArr=n.images||[];
     var imgs=imgArr.map(function(u){ return '<img src="'+u+'" onclick="ntOpenImg(this.src)" alt="첨부 이미지">'; }).join('');
@@ -5589,16 +5642,19 @@ function renderNotices(notices){
       '<button class="btn btn-dg btn-xs" onclick="ntDelete(\''+n.id+'\')">삭제</button></div>'):'';
     // 접힌 상태에서도 사진 첨부가 있으면 표시
     var clip=imgArr.length?('<span class="nt-clip">📷 '+imgArr.length+'</span>'):'';
-    return '<div class="nt-card'+(n.pinned?' pinned':'')+'">'+
+    // 검색어가 본문에만 있는 공지는 펼쳐서 보여줌 (왜 검색됐는지 바로 보이게)
+    return '<div class="nt-card'+(n.pinned?' pinned':'')+(bodyHit[n.id]?' open':'')+'">'+
       '<div class="nt-cardhead" onclick="ntToggle(this)">'+
         '<div class="nt-htext">'+
-          '<div class="nt-title">'+(n.pinned?'<span class="nt-pin">고정</span>':'')+ntEsc(n.title)+clip+'</div>'+
-          '<div class="nt-meta">'+ntEsc(n.author||'관리자')+' · '+ntEsc(String(n.dt||'').slice(0,16))+'</div>'+
+          // 일반 공지는 제목이 한 줄로 잘리므로 📷 표시를 제목 밖에 둬서 항상 보이게
+          '<div class="nt-title">'+(n.pinned?'<span class="nt-pin">고정</span>':'')+ntHi(n.title,term)+(n.pinned?clip:'')+'</div>'+
+          (n.pinned?'':clip)+
+          '<div class="nt-meta">'+ntHi(n.author||'관리자',term)+' · '+ntEsc(String(n.dt||'').slice(0,16))+'</div>'+
         '</div>'+
         '<span class="nt-chev">▼</span>'+
       '</div>'+
       '<div class="nt-collapse">'+
-        (n.body?'<div class="nt-body">'+ntEsc(n.body)+'</div>':'')+
+        (n.body?'<div class="nt-body">'+ntHi(n.body,term)+'</div>':'')+
         (imgs?'<div class="nt-imgs">'+imgs+'</div>':'')+
         actions+
       '</div>'+
@@ -5606,6 +5662,12 @@ function renderNotices(notices){
   }).join('');
 }
 
+// 검색창: 입력할 때마다 즉시 필터 (서버 재조회 없이 불러온 목록에서 거름)
+(function(){
+  var inp=document.getElementById('nt-search'), clr=document.getElementById('nt-search-clear');
+  if(inp) inp.addEventListener('input',function(){ if(NOTICE_CACHE) renderNotices(NOTICE_CACHE); });
+  if(clr) clr.addEventListener('click',function(){ if(inp){ inp.value=''; inp.focus(); } if(NOTICE_CACHE) renderNotices(NOTICE_CACHE); });
+})();
 // 공지 카드 펼치기/접기 (제목 헤더 클릭)
 window.ntToggle=function(headEl){
   var card=headEl.closest ? headEl.closest('.nt-card') : headEl.parentNode;
