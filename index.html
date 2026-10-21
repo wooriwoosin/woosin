@@ -605,6 +605,7 @@ table.pt td.otc{background:#FFF8F8;}
     <div class="pg" id="pg-perfreport">
       <div class="dbar" style="margin-bottom:14px;flex-wrap:wrap;gap:6px">
         <button class="btn btn-se btn-sm pr-quick" data-range="today">오늘</button>
+        <button class="btn btn-se btn-sm pr-quick" data-range="yesterday">어제</button>
         <button class="btn btn-se btn-sm pr-quick" data-range="thisweek">이번주</button>
         <button class="btn btn-se btn-sm pr-quick" data-range="lastweek">지난주</button>
         <button class="btn btn-pr btn-sm pr-quick" data-range="thismonth">이번달</button>
@@ -5387,6 +5388,7 @@ function prFmtDate(d){ return d.getFullYear()+'-'+prPad(d.getMonth()+1)+'-'+prPa
 function prRangeFor(kind){
   var now=new Date(), s, e;
   if(kind==='today'){ s=new Date(now); e=new Date(now); }
+  else if(kind==='yesterday'){ s=new Date(now); s.setDate(now.getDate()-1); e=new Date(s); }
   else if(kind==='thisweek'){
     var dow=(now.getDay()+6)%7; // 월요일=0
     s=new Date(now); s.setDate(now.getDate()-dow);
@@ -5544,10 +5546,18 @@ document.querySelectorAll('.pr-quick').forEach(function(btn){
     var r=prRangeFor(btn.dataset.range);
     document.getElementById('pr-start').value=r.start;
     document.getElementById('pr-end').value=r.end;
+    prMarkQuick(btn.dataset.range);
     prFetchAndRender();
   });
 });
-document.getElementById('pr-apply-btn') && document.getElementById('pr-apply-btn').addEventListener('click',prFetchAndRender);
+// 누른 기간 버튼만 파랗게 (날짜를 직접 입력해 조회하면 전부 해제)
+function prMarkQuick(range){
+  document.querySelectorAll('.pr-quick').forEach(function(b){
+    var on=b.dataset.range===range;
+    b.classList.toggle('btn-pr',on); b.classList.toggle('btn-se',!on);
+  });
+}
+document.getElementById('pr-apply-btn') && document.getElementById('pr-apply-btn').addEventListener('click',function(){ prMarkQuick(null); prFetchAndRender(); });
 
 // ══════════════════════════════════════════════
 // 로그 (대표관리자 전용) - 접속이력 + 변경로그
