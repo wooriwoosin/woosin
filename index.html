@@ -5372,12 +5372,13 @@ document.getElementById('tcu-save') && document.getElementById('tcu-save').addEv
 var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선']; // 기간 합산 대상 기본 카테고리
 // 실적리포트 환산 가중치 (건당 점수). 합계(점) = Σ건수×가중치, 환산실적 = 합계 ÷ 가용시간(8h − 연차 − 고정업무시간)
 //  · 약정갱신은 인업셀/인약갱/티약갱/티업셀 파트별 1건씩이라 "약갱·업셀 각각 0.3"
-//  · 인증은 인증-일반만 점수 (인증-약갱은 목록에 없어 0점)
+//  · 인증-일반 0.3, 인증-약갱 0.7
 //  · VOC는 고정업무(시간)로 반영되므로 건수 점수 없음
-var PR_WEIGHTS={유선신규:0.4,약정갱신:0.3,유선기타:0.5,기가아이즈:1,무선:0.5,상품권:0.3,인증_일반:0.3,간편작성:0.3};
+//  · 무선 개통 시 부수적으로 생기는 발신콜은 무선건수만큼 빼서 0점 (prPhoneWork)
+var PR_WEIGHTS={유선신규:0.4,약정갱신:0.3,유선기타:0.5,기가아이즈:1,무선:0.5,상품권:0.3,인증_일반:0.3,인증_약갱:0.7,간편작성:0.3};
 var PR_CALL_WEIGHTS={발신콜:0.3,수신콜:0.5,땡김콜:0.8};
 function prWeightLegend(){
-  return '유선신규 0.4 · 약갱/업셀 0.3 · 유선기타 0.5 · 기가아이즈 1 · 무선 0.5 · 상품권 0.3 · 인증(일반) 0.3 · 간편작성 0.3 · 발신 0.3 · 수신 0.5 · 땡김 0.8 (VOC는 고정업무시간으로 반영)';
+  return '유선신규 0.4 · 약갱/업셀 0.3 · 유선기타 0.5 · 기가아이즈 1 · 무선 0.5 · 상품권 0.3 · 인증-일반 0.3 · 인증-약갱 0.7 · 간편작성 0.3 · 발신 0.3 · 수신 0.5 · 땡김 0.8 (VOC는 고정업무시간으로 반영)';
 }
 function prPad(n){ return String(n).padStart(2,'0'); }
 function prFmtDate(d){ return d.getFullYear()+'-'+prPad(d.getMonth()+1)+'-'+prPad(d.getDate()); }
@@ -5502,9 +5503,9 @@ function prRenderTable(sums){
     '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
     '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td><td></td></tr>';
   tbl.innerHTML=head+(body||'<tr><td colspan="19" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow+
-    '<tr><td colspan="19" style="font-size:11px;color:var(--tm);text-align:left;padding:8px 6px;border:none">환산 가중치(건당 점수): '+prWeightLegend()+' · 무선 개통 시 ARS 등 부수 발신콜은 무선건수만큼 차감</td></tr>';
+    '<tr><td colspan="19" style="font-size:11px;color:var(--tm);text-align:left;padding:8px 6px;border:none">환산 가중치(건당 점수): '+prWeightLegend()+' · 무선 개통 시 ARS 등 부수 발신콜은 무선건수만큼 빼고 0점</td></tr>';
 }
-// 인증 칸: 점수 대상인 일반 건수 + (약갱 건수)
+// 인증 칸: 일반 건수 + (약갱 건수)
 function prAuthCell(s){ var g=s.인증_일반||0, y=s.인증_약갱||0; return g+(y?'<span style="font-size:10.5px;color:var(--tm)"> ('+y+')</span>':''); }
 function prRenderChart(sums){
   var wrap=document.getElementById('pr-chart');
