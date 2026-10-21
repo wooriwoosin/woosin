@@ -5369,7 +5369,16 @@ document.getElementById('tcu-save') && document.getElementById('tcu-save').addEv
 // ══════════════════════════════════════════════
 // 실적리포트 (주간/월간 종합)
 // ══════════════════════════════════════════════
-var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선']; // 합계/환산실적 대상 (상품권은 별도 열로만 표시)
+var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무선']; // 기간 합산 대상 기본 카테고리
+// 실적리포트 환산 가중치 (건당 점수). 합계(점) = Σ건수×가중치, 환산실적 = 합계 ÷ 가용시간(8h − 연차 − 고정업무시간)
+//  · 약정갱신은 인업셀/인약갱/티약갱/티업셀 파트별 1건씩이라 "약갱·업셀 각각 0.3"
+//  · 인증은 인증-일반만 점수 (인증-약갱은 목록에 없어 0점)
+//  · VOC는 고정업무(시간)로 반영되므로 건수 점수 없음
+var PR_WEIGHTS={유선신규:0.4,약정갱신:0.3,유선기타:0.5,기가아이즈:1,무선:0.5,상품권:0.3,인증_일반:0.3,간편작성:0.3};
+var PR_CALL_WEIGHTS={발신콜:0.3,수신콜:0.5,땡김콜:0.8};
+function prWeightLegend(){
+  return '유선신규 0.4 · 약갱/업셀 0.3 · 유선기타 0.5 · 기가아이즈 1 · 무선 0.5 · 상품권 0.3 · 인증(일반) 0.3 · 간편작성 0.3 · 발신 0.3 · 수신 0.5 · 땡김 0.8 (VOC는 고정업무시간으로 반영)';
+}
 function prPad(n){ return String(n).padStart(2,'0'); }
 function prFmtDate(d){ return d.getFullYear()+'-'+prPad(d.getMonth()+1)+'-'+prPad(d.getDate()); }
 function prRangeFor(kind){
@@ -5418,10 +5427,10 @@ function prFetchAndRender(){
     perfRes.rows.forEach(function(r){
       var id=r.empId;
       if(adminIds[id]||adminNames[(r.empName||'').trim()]) return;
-      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,인증:0,간편작성:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
+      if(!sums[id]) sums[id]={name:r.empName,team:r.team||'미지정',유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,인증:0,인증_일반:0,인증_약갱:0,간편작성:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,availableHours:0,fixdurHours:0,days:0};
       PR_CATS.forEach(function(c){ sums[id][c]+=Number(r[c]||0); });
       sums[id].상품권+=Number(r.상품권||0);
-      sums[id].인증+=Number(r.인증||0); sums[id].간편작성+=Number(r.간편작성||0);
+      sums[id].인증+=Number(r.인증||0); sums[id].인증_일반+=Number(r.인증_일반||0); sums[id].인증_약갱+=Number(r.인증_약갱||0); sums[id].간편작성+=Number(r.간편작성||0);
       sums[id].발신콜+=Number(r.발신콜||0); sums[id].수신콜+=Number(r.수신콜||0); sums[id].땡김콜+=Number(r.땡김콜||0);
       sums[id].VOC+=Number(r.VOC||0);
       var leaveH=PR_LEAVE_HOURS[r.연차유형]!==undefined?PR_LEAVE_HOURS[r.연차유형]:0;
@@ -5437,13 +5446,13 @@ function prFetchAndRender(){
     prRenderChart(sums);
   });
 }
-// 접수업무(유선신규/약정갱신/유선기타/기가아이즈/무선)
-function prAcceptWork(s){ return PR_CATS.reduce(function(sum,c){return sum+(s[c]||0);},0); }
-// 전화업무(발신/수신/땡김) - 단, 무선개통시 ARS인증 등으로 부수적으로 발생하는 발신콜은
-// 무선 접수건수만큼 빼줘서 중복 인정되지 않게 함
+// 접수·처리업무 환산점수 (건수×가중치, PR_WEIGHTS)
+function prAcceptWork(s){ return Object.keys(PR_WEIGHTS).reduce(function(sum,k){return sum+(Number(s[k])||0)*PR_WEIGHTS[k];},0); }
+// 전화업무 환산점수(발신/수신/땡김) - 단, 무선개통시 ARS인증 등으로 부수적으로 발생하는 발신콜은
+// 무선 개통건수만큼 빼줘서 중복 인정되지 않게 함
 function prPhoneWork(s){
   var adjOutbound=Math.max(0,(s.발신콜||0)-(s.무선||0));
-  return adjOutbound+(s.수신콜||0)+(s.땡김콜||0);
+  return adjOutbound*PR_CALL_WEIGHTS.발신콜+(s.수신콜||0)*PR_CALL_WEIGHTS.수신콜+(s.땡김콜||0)*PR_CALL_WEIGHTS.땡김콜;
 }
 function prTotal(s){ return prAcceptWork(s)+prPhoneWork(s); }
 function prRate(s){
@@ -5466,21 +5475,21 @@ function prRenderTable(sums){
   var activeIds=Object.keys(sums).filter(function(id){return !sums[id].retired;}).sort(byRate);
   var retiredIds=Object.keys(sums).filter(function(id){return sums[id].retired;}).sort(byRate);
   var ids=activeIds.concat(retiredIds);
-  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약갱/업셀</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>상품권</th><th>인증</th><th>간편작성</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(건/h)</th><th>퇴사일</th></tr>';
-  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,인증:0,간편작성:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
+  var head='<tr><th>팀</th><th>이름</th><th>유선신규</th><th>약갱/업셀</th><th>유선기타</th><th>기가아이즈</th><th>무선</th><th>상품권</th><th>인증<br><span style="font-weight:400;font-size:10.5px">일반(약갱)</span></th><th>간편작성</th><th>발신</th><th>수신</th><th>땡김</th><th>VOC</th><th>합계(점)</th><th>고정업무(h)</th><th>가용시간(h)</th><th>환산실적(점/h)</th><th>퇴사일</th></tr>';
+  var grand={유선신규:0,약정갱신:0,유선기타:0,기가아이즈:0,무선:0,상품권:0,인증:0,인증_일반:0,인증_약갱:0,간편작성:0,발신콜:0,수신콜:0,땡김콜:0,VOC:0,fixdurHours:0,availableHours:0};
   var body=ids.map(function(id){
     var s=sums[id];
     var total=prTotal(s);
     var rate=prRate(s);
     PR_CATS.forEach(function(c){grand[c]+=s[c];});
-    grand.상품권+=(s.상품권||0); grand.인증+=(s.인증||0); grand.간편작성+=(s.간편작성||0);
+    grand.상품권+=(s.상품권||0); grand.인증+=(s.인증||0); grand.인증_일반+=(s.인증_일반||0); grand.인증_약갱+=(s.인증_약갱||0); grand.간편작성+=(s.간편작성||0);
     grand.발신콜+=s.발신콜; grand.수신콜+=s.수신콜; grand.땡김콜+=s.땡김콜; grand.VOC+=s.VOC;
     grand.fixdurHours+=s.fixdurHours; grand.availableHours+=s.availableHours;
     var rowStyle=s.retired?' style="background:#F5F5F5;color:var(--tm)"':'';
     return '<tr'+rowStyle+'><td class="tc">'+s.team+'</td><td style="font-weight:600">'+s.name+'</td>'+
-      '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td><td>'+(s.상품권||0)+'</td><td>'+(s.인증||0)+'</td><td>'+(s.간편작성||0)+'</td>'+
+      '<td>'+s.유선신규+'</td><td>'+s.약정갱신+'</td><td>'+s.유선기타+'</td><td>'+s.기가아이즈+'</td><td>'+s.무선+'</td><td>'+(s.상품권||0)+'</td><td>'+prAuthCell(s)+'</td><td>'+(s.간편작성||0)+'</td>'+
       '<td>'+s.발신콜+'</td><td>'+s.수신콜+'</td><td>'+s.땡김콜+'</td><td>'+s.VOC+'</td>'+
-      '<td style="font-weight:700">'+total+'</td>'+
+      '<td style="font-weight:700">'+total.toFixed(1)+'</td>'+
       '<td>'+s.fixdurHours.toFixed(1)+'</td><td>'+s.availableHours.toFixed(1)+'</td>'+
       '<td style="font-weight:800;color:var(--ac)">'+(rate!==null?rate.toFixed(2):'-')+'</td>'+
       '<td style="font-size:11px;color:var(--tm)">'+(s.retired?(s.retiredAt||'-'):'')+'</td></tr>';
@@ -5488,12 +5497,15 @@ function prRenderTable(sums){
   var grandTotal=prTotal(grand);
   var grandRate=prRate(grand);
   var footRow='<tr style="background:var(--bg);font-weight:800"><td colspan="2">전체 합계</td>'+
-    '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td><td>'+grand.상품권+'</td><td>'+grand.인증+'</td><td>'+grand.간편작성+'</td>'+
-    '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td>'+grandTotal+'</td>'+
+    '<td>'+grand.유선신규+'</td><td>'+grand.약정갱신+'</td><td>'+grand.유선기타+'</td><td>'+grand.기가아이즈+'</td><td>'+grand.무선+'</td><td>'+grand.상품권+'</td><td>'+prAuthCell(grand)+'</td><td>'+grand.간편작성+'</td>'+
+    '<td>'+grand.발신콜+'</td><td>'+grand.수신콜+'</td><td>'+grand.땡김콜+'</td><td>'+grand.VOC+'</td><td>'+grandTotal.toFixed(1)+'</td>'+
     '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
     '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td><td></td></tr>';
-  tbl.innerHTML=head+(body||'<tr><td colspan="19" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow;
+  tbl.innerHTML=head+(body||'<tr><td colspan="19" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow+
+    '<tr><td colspan="19" style="font-size:11px;color:var(--tm);text-align:left;padding:8px 6px;border:none">환산 가중치(건당 점수): '+prWeightLegend()+' · 무선 개통 시 ARS 등 부수 발신콜은 무선건수만큼 차감</td></tr>';
 }
+// 인증 칸: 점수 대상인 일반 건수 + (약갱 건수)
+function prAuthCell(s){ var g=s.인증_일반||0, y=s.인증_약갱||0; return g+(y?'<span style="font-size:10.5px;color:var(--tm)"> ('+y+')</span>':''); }
 function prRenderChart(sums){
   var wrap=document.getElementById('pr-chart');
   if(!wrap) return;
@@ -5516,7 +5528,7 @@ function prRenderChart(sums){
       (x.retired?'<div style="width:90px;font-size:10.5px;color:var(--tm)">퇴사 '+(x.retiredAt||'-')+'</div>':'')+
     '</div>';
   }
-  var html='<div style="font-size:11px;color:var(--tm);margin-bottom:8px">가용시간(연차·고정업무 시간 차감) 대비 환산실적(건/시간) 기준</div>'+
+  var html='<div style="font-size:11px;color:var(--tm);margin-bottom:8px">가용시간(연차·고정업무 시간 차감) 대비 환산실적(점/시간) 기준 — 항목별 가중치 적용</div>'+
     activeList.map(barRow).join('');
   if(retiredList.length){
     html+='<div style="margin-top:14px;padding-top:10px;border-top:2px dashed var(--b);font-size:11px;color:var(--tm)">📦 (퇴사자)</div>'+
