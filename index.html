@@ -241,8 +241,10 @@ table.pt td.otc{background:#FFF8F8;}
 .pa-voc-wrap{font-size:11.5px;color:var(--ts);font-weight:700;display:flex;align-items:center;gap:5px;background:var(--ppl);padding:4px 10px 4px 12px;border-radius:20px;}
 .pa-voc-wrap input{width:48px;padding:3px 5px;border:1.5px solid var(--pp);border-radius:6px;font-size:12px;text-align:center;color:var(--pp);font-weight:700;}
 .pa-voc-disabled{background:var(--bg)!important;color:var(--tm)!important;}
-.pa-counts{display:flex;gap:8px;flex-wrap:wrap;}
-.pa-cnt-pill{flex:1;min-width:90px;border-radius:8px;padding:8px 10px;text-align:center;transition:transform .1s;}
+/* 칸이 많아도 한 줄에 최대한 들어가고, 넘치면 다음 줄도 같은 폭(마지막 칸만 길게 늘어나지 않게) */
+.pa-counts{display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));}
+.pa-counts .pa-fixdur-multi{grid-column:span 2;}
+.pa-cnt-pill{min-width:0;border-radius:8px;padding:8px 6px;text-align:center;transition:transform .1s;}
 .pa-cnt-pill.clickable{cursor:pointer;}
 .pa-cnt-pill.clickable:hover{transform:translateY(-1px);}
 .pa-cnt-num{display:block;font-size:19px;font-weight:800;}
