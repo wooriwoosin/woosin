@@ -402,8 +402,8 @@ table.pt td.otc{background:#FFF8F8;}
         <div style="margin-top:12px;padding:10px 12px;border:1.5px dashed var(--bs);border-radius:8px;font-size:12px;color:var(--ts);line-height:1.7">
           🧪 <b>workline 자동 가져오기 준비 (진단)</b><br>
           ① 오른쪽 버튼을 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> →
-          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단</a><br>
-          ② workline에서 엑셀 받는 화면을 열고 즐겨찾기의 <b>🔍 workline 진단</b> 클릭 → ③ <b>엑셀 다운로드</b> 버튼 클릭 → ④ 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
+          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단 v2</a> <span style="color:var(--tm)">(예전 진단 버튼은 지우고 이걸로 다시 끌어다 놓기)</span><br>
+          ② workline에서 엑셀 받는 화면을 열고 즐겨찾기의 <b>🔍 workline 진단 v2</b> 클릭 → ③ <b>조회</b> 버튼 → <b>엑셀 다운로드</b> 버튼 클릭 → ④ 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
         </div>
       </div>
 
@@ -4800,35 +4800,74 @@ document.getElementById('pa-gift-file') && document.getElementById('pa-gift-file
 // 화면에 보여주고 복사할 수 있게 한다. 쿠키·헤더·응답(고객데이터)은 읽지 않고, URL의 token/key 류 값은 가린다.
 // (자기완결 함수여야 함 - toString()으로 북마클릿 코드가 됨)
 function wlDiagBookmarklet(){
-  if(window.__wlDiag){ alert('이미 기록 중이에요. 엑셀 다운로드 버튼을 눌러주세요.'); return; }
+  if(window.__wlDiag){ alert('이미 기록 중이에요. 조회 → 엑셀 다운로드 버튼을 눌러주세요.'); return; }
   var log=[]; window.__wlDiag=log;
   var box=document.createElement('div');
-  box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483647;width:440px;max-height:60vh;overflow:auto;background:#fff;border:2px solid #3B6FE8;border-radius:10px;padding:10px 12px;font:12px/1.5 sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);color:#111;text-align:left';
-  box.innerHTML='<b>🔍 workline 진단 기록 중</b><br>이제 <b>엑셀 다운로드</b> 버튼을 눌러주세요.<div id="__wlog" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:11px"></div>'+
+  box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483647;width:460px;max-height:60vh;overflow:auto;background:#fff;border:2px solid #3B6FE8;border-radius:10px;padding:10px 12px;font:12px/1.5 sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);color:#111;text-align:left';
+  box.innerHTML='<b>🔍 workline 진단 기록 중 (<span id="__wcnt">0</span>건)</b><br><b>조회</b> 버튼 → <b>엑셀 다운로드</b> 버튼을 눌러주세요.<div id="__wlog" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:11px"></div>'+
     '<button id="__wcopy" style="margin-top:8px;padding:4px 10px">📋 결과 복사</button> <button id="__wclear" style="padding:4px 10px">지우기</button>';
   document.body.appendChild(box);
+  var STATIC=/\.(js|mjs|css|png|jpe?g|gif|svg|webp|woff2?|ttf|eot|ico|map)(\?|#|$)/i;
   function mask(s){ return String(s==null?'':s).replace(/([?&;](?:access_?token|token|api_?key|key|session|sid|auth|password|pw)[^=&]*=)[^&]*/gi,'$1***'); }
   function cut(s){ s=mask(s); return s.length>800?s.slice(0,800)+'…':s; }
-  function render(){ var el=document.getElementById('__wlog'); if(el) el.textContent=log.map(function(x,i){return (i+1)+'. ['+x.t+'] '+x.d;}).join('\n'); }
+  function render(){ var el=document.getElementById('__wlog'); if(el) el.textContent=log.map(function(x,i){ return (i+1)+'. ['+x.t+'] '+x.d; }).join('\n'); var c=document.getElementById('__wcnt'); if(c) c.textContent=log.length; }
   function add(t,d){ log.push({t:t,d:d,at:location.hash}); render(); }
   function bodyStr(b){ try{ if(!b) return ''; if(typeof b==='string') return b; if(b instanceof URLSearchParams) return b.toString();
-    if(b instanceof FormData){ var a=[]; b.forEach(function(v,k){ a.push(k+'='+(typeof v==='string'?v:'[파일]')); }); return a.join('&'); }
+    if(typeof FormData!=='undefined'&&b instanceof FormData){ var a=[]; b.forEach(function(v,k){ a.push(k+'='+(typeof v==='string'?v:'[파일]')); }); return a.join('&'); }
     return '['+((b.constructor&&b.constructor.name)||'body')+']'; }catch(e){ return '?'; } }
-  var of=window.fetch; if(of) window.fetch=function(u,o){ try{ var url=typeof u==='string'?u:(u&&u.url); add('fetch',((o&&o.method)||(u&&u.method)||'GET')+' '+cut(url)+(o&&o.body?'\n   body: '+cut(bodyStr(o.body)):'')); }catch(e){} return of.apply(this,arguments); };
-  var xo=XMLHttpRequest.prototype.open, xs=XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open=function(m,u){ this.__wl=m+' '+u; return xo.apply(this,arguments); };
-  XMLHttpRequest.prototype.send=function(b){ try{ add('xhr',cut(this.__wl)+(b?'\n   body: '+cut(bodyStr(b)):'')+(this.responseType?' (responseType='+this.responseType+')':'')); }catch(e){} return xs.apply(this,arguments); };
-  var oc=URL.createObjectURL; URL.createObjectURL=function(o){ try{ if(o&&o.size!=null) add('파일생성','type='+(o.type||'-')+' size='+o.size); }catch(e){} return oc.apply(this,arguments); };
-  var ac=HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click=function(){ try{ add('다운로드링크',(this.download?'download='+this.download+' ':'')+cut(this.href).slice(0,300)); }catch(e){} return ac.apply(this,arguments); };
-  var fsub=HTMLFormElement.prototype.submit; HTMLFormElement.prototype.submit=function(){ try{ var a=[]; new FormData(this).forEach(function(v,k){ a.push(k+'='+v); }); add('form',(this.method||'GET')+' '+cut(this.action)+'\n   '+cut(a.join('&'))); }catch(e){} return fsub.apply(this,arguments); };
-  document.addEventListener('submit',function(e){ try{ var f=e.target,a=[]; new FormData(f).forEach(function(v,k){ a.push(k+'='+v); }); add('form',(f.method||'GET')+' '+cut(f.action)+'\n   '+cut(a.join('&'))); }catch(x){} },true);
-  var wo=window.open; window.open=function(u){ try{ add('새창',cut(u)); }catch(e){} return wo.apply(this,arguments); };
-  document.addEventListener('click',function(e){ var el=e.target&&e.target.closest&&e.target.closest('a,button,input[type=button],input[type=submit],[role=button]'); if(!el||box.contains(el)) return;
-    add('클릭',el.tagName+' "'+String(el.innerText||el.value||'').trim().slice(0,40)+'"'+(el.id?' #'+el.id:'')+(el.getAttribute('href')&&el.getAttribute('href')!=='#'?' href='+cut(el.getAttribute('href')).slice(0,300):'')); },true);
+  // 응답 데이터는 값 없이 "구조(칸 이름)"만 기록
+  function shape(obj){ try{
+    function findArr(o,path,depth){ if(depth>4||!o||typeof o!=='object') return null; if(Array.isArray(o)) return {path:path,arr:o};
+      for(var k in o){ var r=findArr(o[k],path+'.'+k,depth+1); if(r) return r; } return null; }
+    var s='최상위 키: '+(Array.isArray(obj)?'[배열]':Object.keys(obj||{}).slice(0,30).join(','));
+    var f=findArr(obj,'',0);
+    if(f){ s+='\n   목록 '+(f.path||'(최상위)')+' : '+f.arr.length+'건'; if(f.arr[0]&&typeof f.arr[0]==='object') s+='\n   항목 칸: '+Object.keys(f.arr[0]).slice(0,120).join(', '); }
+    return s; }catch(e){ return '(구조 분석 실패)'; } }
+  function respInfo(status,ct,cd){ return '응답 '+status+' '+(ct||'-')+(cd?' / '+cd:''); }
+  function hookWin(w,tag){
+    try{ if(!w||w.__wlHooked) return; w.__wlHooked=true; }catch(e){ return; } // 다른 사이트 창은 접근 불가 → 건너뜀
+    tag=tag?'['+tag+'] ':'';
+    try{ var of=w.fetch; if(of) w.fetch=function(u,o){ var url=typeof u==='string'?u:(u&&u.url); var m=(o&&o.method)||(u&&u.method)||'GET';
+      try{ add('fetch',tag+m+' '+cut(url)+(o&&o.body?'\n   body: '+cut(bodyStr(o.body)):'')); }catch(e){}
+      var p=of.apply(this,arguments);
+      try{ p.then(function(res){ try{ var ct=res.headers.get('content-type')||'', cd=res.headers.get('content-disposition')||'', info=respInfo(res.status,ct,cd);
+        if(/json/i.test(ct)) res.clone().json().then(function(j){ add('응답',tag+cut(url).slice(0,150)+'\n   '+info+'\n   '+shape(j)); },function(){ add('응답',tag+info); });
+        else add('응답',tag+cut(url).slice(0,150)+'\n   '+info); }catch(e){} },function(){}); }catch(e){}
+      return p; }; }catch(e){}
+    try{ var XP=w.XMLHttpRequest&&w.XMLHttpRequest.prototype; if(XP){ var xo=XP.open, xs=XP.send;
+      XP.open=function(m,u){ this.__wl=m+' '+u; return xo.apply(this,arguments); };
+      XP.send=function(b){ var x=this; try{ add('xhr',tag+cut(x.__wl)+(b?'\n   body: '+cut(bodyStr(b)):''));
+        x.addEventListener('load',function(){ try{ var ct=x.getResponseHeader('content-type')||'', cd=x.getResponseHeader('content-disposition')||'', info=respInfo(x.status,ct,cd);
+          if(/json/i.test(ct)&&(x.responseType===''||x.responseType==='text'||x.responseType==='json')) info+='\n   '+shape(x.responseType==='json'?x.response:JSON.parse(x.responseText));
+          add('응답',tag+cut(x.__wl).slice(0,150)+'\n   '+info); }catch(e){} }); }catch(e){} return xs.apply(this,arguments); }; } }catch(e){}
+    try{ var oc=w.URL.createObjectURL; w.URL.createObjectURL=function(o){ try{ if(o&&o.size!=null) add('파일생성',tag+'type='+(o.type||'-')+' size='+o.size); }catch(e){} return oc.apply(this,arguments); }; }catch(e){}
+    try{ var ac=w.HTMLAnchorElement.prototype.click; w.HTMLAnchorElement.prototype.click=function(){ try{ add('다운로드링크',tag+(this.download?'download='+this.download+' ':'')+cut(this.href).slice(0,300)); }catch(e){} return ac.apply(this,arguments); }; }catch(e){}
+    try{ var fsub=w.HTMLFormElement.prototype.submit; w.HTMLFormElement.prototype.submit=function(){ try{ var a=[]; new w.FormData(this).forEach(function(v,k){ a.push(k+'='+v); }); add('form',tag+(this.method||'GET')+' '+cut(this.action)+'\n   '+cut(a.join('&'))); }catch(e){} return fsub.apply(this,arguments); }; }catch(e){}
+    try{ var wo=w.open; w.open=function(u){ try{ add('새창',tag+cut(u)); }catch(e){} return wo.apply(this,arguments); }; }catch(e){}
+    try{ var d=w.document;
+      d.addEventListener('submit',function(e){ try{ var f=e.target,a=[]; new w.FormData(f).forEach(function(v,k){ a.push(k+'='+v); }); add('form',tag+(f.method||'GET')+' '+cut(f.action)+'\n   '+cut(a.join('&'))); }catch(x){} },true);
+      d.addEventListener('click',function(e){ try{ var el=e.target; if(!el||box.contains(el)) return; if(el.nodeType!==1) el=el.parentElement;
+        var btn=el.closest&&el.closest('a,button,input,[role=button],[onclick]')||el;
+        var txt=String(btn.innerText||btn.value||btn.title||btn.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ').slice(0,40);
+        var href=btn.getAttribute&&btn.getAttribute('href');
+        add('클릭',tag+btn.tagName+' "'+txt+'"'+(btn.id?' #'+btn.id:'')+(btn.className&&typeof btn.className==='string'?' .'+btn.className.trim().split(/\s+/).slice(0,3).join('.'):'')+(href&&href!=='#'?' href='+cut(href).slice(0,300):'')); }catch(x){} },true);
+    }catch(e){}
+    try{ (w.performance.getEntriesByType('resource')||[]).forEach(function(en){ if(STATIC.test(en.name)) return; add('이전요청',tag+en.initiatorType+' '+cut(en.name)); }); }catch(e){}
+    try{ if(w.PerformanceObserver) new w.PerformanceObserver(function(l){ l.getEntries().forEach(function(en){ if(STATIC.test(en.name)||en.initiatorType==='fetch'||en.initiatorType==='xmlhttprequest') return; add('기타요청',tag+en.initiatorType+' '+cut(en.name)); }); }).observe({type:'resource'}); }catch(e){}
+    // 안쪽 창(iframe)도 같은 사이트면 함께 기록 (나중에 생기거나 다시 로드되는 것 포함)
+    var pending=false;
+    function scan(){ pending=false; try{ var fr=w.document.querySelectorAll('iframe,frame'); for(var i=0;i<fr.length;i++){ (function(f){ try{
+      if(!f.__wlL){ f.__wlL=1; var src0=f.getAttribute('src'); if(src0&&!/^about:/.test(src0)) add('안쪽창주소',tag+cut(src0)+(f.offsetWidth===0||f.style.display==='none'?' (숨은창)':''));
+        f.addEventListener('load',function(){ hookWin(f.contentWindow,'안쪽창'); }); }
+      hookWin(f.contentWindow,'안쪽창'); }catch(e){} })(fr[i]); } }catch(e){} }
+    scan();
+    try{ new w.MutationObserver(function(){ if(!pending){ pending=true; setTimeout(scan,300); } }).observe(w.document.documentElement,{childList:true,subtree:true}); }catch(e){}
+  }
+  hookWin(window,'');
   document.getElementById('__wclear').onclick=function(){ log.length=0; render(); };
   document.getElementById('__wcopy').onclick=function(){
-    var t='[workline 진단] '+mask(location.href)+'\n'+log.map(function(x,i){ return (i+1)+'. ['+x.t+'] ('+x.at+') '+x.d; }).join('\n');
-    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ alert('복사됐어요! 채팅에 붙여넣어 주세요.'); },function(){ prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t); });
+    var t='[workline 진단 v2] '+mask(location.href)+'\n'+log.map(function(x,i){ return (i+1)+'. ['+x.t+'] ('+x.at+') '+x.d; }).join('\n');
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ alert('복사됐어요! ('+log.length+'건) 채팅에 붙여넣어 주세요.'); },function(){ prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t); });
     else prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t);
   };
 }
