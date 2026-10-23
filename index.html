@@ -399,6 +399,12 @@ table.pt td.otc{background:#FFF8F8;}
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">인증·간편작성 <span style="color:var(--tm);font-weight:400">(이미징변경이력)</span></label><br><input type="file" id="pa-img-file" accept=".xls,.xlsx,.csv"><div id="pa-img-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
+        <div style="margin-top:12px;padding:10px 12px;border:1.5px dashed var(--bs);border-radius:8px;font-size:12px;color:var(--ts);line-height:1.7">
+          🧪 <b>workline 자동 가져오기 준비 (진단)</b><br>
+          ① 오른쪽 버튼을 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> →
+          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단</a><br>
+          ② workline에서 엑셀 받는 화면을 열고 즐겨찾기의 <b>🔍 workline 진단</b> 클릭 → ③ <b>엑셀 다운로드</b> 버튼 클릭 → ④ 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
+        </div>
       </div>
 
       <div class="card">
@@ -4790,6 +4796,43 @@ document.getElementById('pa-gift-file') && document.getElementById('pa-gift-file
     paRenderResult();
   });
 });
+// workline 진단 북마클릿: workline 페이지에서 실행하면 이후 엑셀 다운로드 시 나가는 요청(주소/방식/조건값)만 기록해
+// 화면에 보여주고 복사할 수 있게 한다. 쿠키·헤더·응답(고객데이터)은 읽지 않고, URL의 token/key 류 값은 가린다.
+// (자기완결 함수여야 함 - toString()으로 북마클릿 코드가 됨)
+function wlDiagBookmarklet(){
+  if(window.__wlDiag){ alert('이미 기록 중이에요. 엑셀 다운로드 버튼을 눌러주세요.'); return; }
+  var log=[]; window.__wlDiag=log;
+  var box=document.createElement('div');
+  box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483647;width:440px;max-height:60vh;overflow:auto;background:#fff;border:2px solid #3B6FE8;border-radius:10px;padding:10px 12px;font:12px/1.5 sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);color:#111;text-align:left';
+  box.innerHTML='<b>🔍 workline 진단 기록 중</b><br>이제 <b>엑셀 다운로드</b> 버튼을 눌러주세요.<div id="__wlog" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:11px"></div>'+
+    '<button id="__wcopy" style="margin-top:8px;padding:4px 10px">📋 결과 복사</button> <button id="__wclear" style="padding:4px 10px">지우기</button>';
+  document.body.appendChild(box);
+  function mask(s){ return String(s==null?'':s).replace(/([?&;](?:access_?token|token|api_?key|key|session|sid|auth|password|pw)[^=&]*=)[^&]*/gi,'$1***'); }
+  function cut(s){ s=mask(s); return s.length>800?s.slice(0,800)+'…':s; }
+  function render(){ var el=document.getElementById('__wlog'); if(el) el.textContent=log.map(function(x,i){return (i+1)+'. ['+x.t+'] '+x.d;}).join('\n'); }
+  function add(t,d){ log.push({t:t,d:d,at:location.hash}); render(); }
+  function bodyStr(b){ try{ if(!b) return ''; if(typeof b==='string') return b; if(b instanceof URLSearchParams) return b.toString();
+    if(b instanceof FormData){ var a=[]; b.forEach(function(v,k){ a.push(k+'='+(typeof v==='string'?v:'[파일]')); }); return a.join('&'); }
+    return '['+((b.constructor&&b.constructor.name)||'body')+']'; }catch(e){ return '?'; } }
+  var of=window.fetch; if(of) window.fetch=function(u,o){ try{ var url=typeof u==='string'?u:(u&&u.url); add('fetch',((o&&o.method)||(u&&u.method)||'GET')+' '+cut(url)+(o&&o.body?'\n   body: '+cut(bodyStr(o.body)):'')); }catch(e){} return of.apply(this,arguments); };
+  var xo=XMLHttpRequest.prototype.open, xs=XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open=function(m,u){ this.__wl=m+' '+u; return xo.apply(this,arguments); };
+  XMLHttpRequest.prototype.send=function(b){ try{ add('xhr',cut(this.__wl)+(b?'\n   body: '+cut(bodyStr(b)):'')+(this.responseType?' (responseType='+this.responseType+')':'')); }catch(e){} return xs.apply(this,arguments); };
+  var oc=URL.createObjectURL; URL.createObjectURL=function(o){ try{ if(o&&o.size!=null) add('파일생성','type='+(o.type||'-')+' size='+o.size); }catch(e){} return oc.apply(this,arguments); };
+  var ac=HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click=function(){ try{ add('다운로드링크',(this.download?'download='+this.download+' ':'')+cut(this.href).slice(0,300)); }catch(e){} return ac.apply(this,arguments); };
+  var fsub=HTMLFormElement.prototype.submit; HTMLFormElement.prototype.submit=function(){ try{ var a=[]; new FormData(this).forEach(function(v,k){ a.push(k+'='+v); }); add('form',(this.method||'GET')+' '+cut(this.action)+'\n   '+cut(a.join('&'))); }catch(e){} return fsub.apply(this,arguments); };
+  document.addEventListener('submit',function(e){ try{ var f=e.target,a=[]; new FormData(f).forEach(function(v,k){ a.push(k+'='+v); }); add('form',(f.method||'GET')+' '+cut(f.action)+'\n   '+cut(a.join('&'))); }catch(x){} },true);
+  var wo=window.open; window.open=function(u){ try{ add('새창',cut(u)); }catch(e){} return wo.apply(this,arguments); };
+  document.addEventListener('click',function(e){ var el=e.target&&e.target.closest&&e.target.closest('a,button,input[type=button],input[type=submit],[role=button]'); if(!el||box.contains(el)) return;
+    add('클릭',el.tagName+' "'+String(el.innerText||el.value||'').trim().slice(0,40)+'"'+(el.id?' #'+el.id:'')+(el.getAttribute('href')&&el.getAttribute('href')!=='#'?' href='+cut(el.getAttribute('href')).slice(0,300):'')); },true);
+  document.getElementById('__wclear').onclick=function(){ log.length=0; render(); };
+  document.getElementById('__wcopy').onclick=function(){
+    var t='[workline 진단] '+mask(location.href)+'\n'+log.map(function(x,i){ return (i+1)+'. ['+x.t+'] ('+x.at+') '+x.d; }).join('\n');
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ alert('복사됐어요! 채팅에 붙여넣어 주세요.'); },function(){ prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t); });
+    else prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t);
+  };
+}
+(function(){ var a=document.getElementById('wl-diag-link'); if(a) a.setAttribute('href','javascript:'+encodeURIComponent('('+wlDiagBookmarklet.toString()+')()')); })();
 // 이미징 변경이력 파일: 인증(일반/약갱)·간편작성 집계 (paAggregate 참고)
 document.getElementById('pa-img-file') && document.getElementById('pa-img-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
