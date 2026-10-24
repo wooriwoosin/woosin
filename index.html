@@ -398,7 +398,7 @@ table.pt td.otc{background:#FFF8F8;}
             <button type="button" class="btn btn-pr btn-sm" id="wl-open-btn">🔗 workline 열기</button>
             <span id="wl-status" style="font-weight:600;color:var(--ad)"></span>
           </div>
-          <div style="margin-top:4px">① 위에서 <b>집계 날짜</b> 선택 → ② <b>[🔗 workline 열기]</b> → ③ 열린 workline 창에서 즐겨찾기 <b>[📥 인트라넷으로 보내기]</b> 클릭 → 접수일·개통일·상품권·인증 4개가 자동으로 들어옵니다. <span style="color:var(--tm)">(전화 CTI는 파일로 올려주세요)</span></div>
+          <div style="margin-top:4px">① 위에서 <b>집계 날짜</b> 선택 → ② <b>[🔗 workline 열기]</b> → ③ 열린 workline 창에서 즐겨찾기 <b>[📥 인트라넷으로 보내기]</b> 클릭 → 접수일·개통일·상품권·인증 4개가 자동으로 들어옵니다. <span style="color:var(--tm)">(workline 창이 이미 열려 있으면 ②는 건너뛰고 그 창에서 바로 ③ · 전화 CTI는 파일로 올려주세요)</span></div>
           <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--ad)">처음 한 번만: 즐겨찾기 버튼 설치</summary>
             <div style="margin-top:6px">오른쪽 버튼을 <b>클릭하지 말고</b> 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> (즐겨찾기 줄이 안 보이면 Ctrl+Shift+B) →
               <a id="wl-send-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ok);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">📥 인트라넷으로 보내기</a>
@@ -4958,8 +4958,11 @@ window.addEventListener('message',function(ev){
   var m=ev.data; if(!m||typeof m!=='object') return;
   function kindStatus(kind,t){ var st=document.getElementById('pa-'+kind+'-status'); if(st) st.textContent=t; }
   if(m.type==='wl-hello'){
-    if(!WL_REQ||!CU||CU.role!=='admin'){ ev.source.postMessage({type:'wl-reject',msg:'인트라넷 실적집계에서 날짜를 고르고 [🔗 workline 열기]를 먼저 눌러주세요.'},WL_ORIGIN); return; }
-    var d=(document.getElementById('pa-date')||{}).value||WL_REQ.date; WL_REQ.date=d;
+    // 이미 열려 있는 workline 창에서 눌러도 됨 - 그 순간 인트라넷에 설정된 집계 날짜로 요청
+    var d=(document.getElementById('pa-date')||{}).value;
+    var why=(!CU||CU.role!=='admin')?'인트라넷에 관리자 계정으로 로그인해 주세요.':(!d?'인트라넷 실적집계에서 집계 날짜를 먼저 선택해 주세요.':'');
+    if(why){ ev.source.postMessage({type:'wl-reject',msg:why},WL_ORIGIN); return; }
+    WL_REQ={date:d}; // 이 날짜로 보낸 파일만 받음 (중간에 날짜를 바꾸면 이전 날짜 파일은 무시)
     ev.source.postMessage({type:'wl-request',date:d,jobs:wlJobs(d)},WL_ORIGIN);
     wlStatus('⏳ '+d+' 데이터 가져오는 중... (workline 창은 끝날 때까지 열어두세요)');
   } else if(m.type==='wl-progress'){
