@@ -391,6 +391,20 @@ table.pt td.otc{background:#FFF8F8;}
 
       <div class="card">
         <div class="cttl" style="margin-bottom:10px">📁 로우데이터 업로드</div>
+        <div style="margin-bottom:14px;padding:12px 14px;border:1.5px solid var(--ac);background:var(--al);border-radius:10px;font-size:12.5px;color:var(--ts);line-height:1.7">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <b style="color:var(--ad)">⚡ workline에서 바로 가져오기</b>
+            <button type="button" class="btn btn-pr btn-sm" id="wl-open-btn">🔗 workline 열기</button>
+            <span id="wl-status" style="font-weight:600;color:var(--ad)"></span>
+          </div>
+          <div style="margin-top:4px">① 위에서 <b>집계 날짜</b> 선택 → ② <b>[🔗 workline 열기]</b> → ③ 열린 workline 창에서 즐겨찾기 <b>[📥 인트라넷으로 보내기]</b> 클릭 → 접수일·개통일·상품권·인증 4개가 자동으로 들어옵니다. <span style="color:var(--tm)">(전화 CTI는 파일로 올려주세요)</span></div>
+          <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--ad)">처음 한 번만: 즐겨찾기 버튼 설치</summary>
+            <div style="margin-top:6px">오른쪽 버튼을 <b>클릭하지 말고</b> 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> (즐겨찾기 줄이 안 보이면 Ctrl+Shift+B) →
+              <a id="wl-send-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ok);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">📥 인트라넷으로 보내기</a>
+            </div>
+            <div style="margin-top:8px;color:var(--tm)">문제 해결용: <a id="wl-diag-link" href="#" style="color:var(--tm)" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단 v3</a> (가져오기가 안 될 때만 사용)</div>
+          </details>
+        </div>
         <div class="row" style="gap:22px;flex-wrap:wrap;align-items:flex-start">
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">접수일 기준 <span style="color:var(--tm);font-weight:400">(유선·무선)</span></label><br><input type="file" id="pa-wired-file" accept=".xls,.xlsx,.csv"><div id="pa-wired-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">개통일 기준 <span style="color:var(--tm);font-weight:400">(TV약갱·무선)</span></label><br><input type="file" id="pa-tvrenew-file" accept=".xls,.xlsx,.csv"><div id="pa-tvrenew-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
@@ -399,12 +413,6 @@ table.pt td.otc{background:#FFF8F8;}
           <div><label style="font-size:12px;color:var(--ts);font-weight:600">인증·간편작성 <span style="color:var(--tm);font-weight:400">(이미징변경이력)</span></label><br><input type="file" id="pa-img-file" accept=".xls,.xlsx,.csv"><div id="pa-img-status" style="font-size:11.5px;color:var(--tm);margin-top:4px"></div></div>
         </div>
         <div id="pa-phone-map" style="margin-top:10px"></div>
-        <div style="margin-top:12px;padding:10px 12px;border:1.5px dashed var(--bs);border-radius:8px;font-size:12px;color:var(--ts);line-height:1.7">
-          🧪 <b>workline 자동 가져오기 준비 (진단)</b><br>
-          ① 오른쪽 버튼을 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> →
-          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단 v3</a> <span style="color:var(--tm)">(예전 진단 버튼은 지우고 이걸로 다시 끌어다 놓기)</span><br>
-          ② workline에서 날짜 조건이 들어간 화면을 열고 즐겨찾기의 <b>🔍 workline 진단 v3</b> 클릭 → ③ 2~3초 뒤 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
-        </div>
       </div>
 
       <div class="card">
@@ -4738,30 +4746,33 @@ function loadPerfAgg(){
   });
 }
 
-// 접수일 기준 파일: 유선 접수 실적(유선신규/인약갱·인업셀/유선기타/기가아이즈)을 집계한다.
-// (무선은 개통일 기준으로 별도 집계하므로 여기선 담지 않는다 — 모바일 행은 유선 분류에서 자동 제외됨)
-document.getElementById('pa-wired-file') && document.getElementById('pa-wired-file').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  document.getElementById('pa-wired-status').textContent='읽는 중...';
-  paParseHtmlXls(f,function(rows,err){
-    if(err){ document.getElementById('pa-wired-status').textContent='❌ '+err; return; }
-    PA_WIRED_ROWS=rows;
-    document.getElementById('pa-wired-status').textContent='✅ '+rows.length+'건 불러옴';
-    paRenderResult();
-  });
-});
-// 개통일 기준 파일: TV약정갱신(개통완료)=티약갱, 무선(모바일 개통완료)=무선 을 집계한다 (paAggregate 참고).
-document.getElementById('pa-tvrenew-file') && document.getElementById('pa-tvrenew-file').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  document.getElementById('pa-tvrenew-status').textContent='읽는 중...';
-  paParseHtmlXls(f,function(rows,err){
-    if(err){ document.getElementById('pa-tvrenew-status').textContent='❌ '+err; return; }
-    PA_TVRENEW_ROWS=rows;
+// 로우데이터 적재 (파일 업로드·workline 바로 가져오기 공용) — 종류별로 rows를 담고 상태문구를 돌려준다.
+//  · wired   : 접수일 기준 — 유선 접수 실적(유선신규/인약갱·인업셀/유선기타/기가아이즈). 무선은 개통일 기준으로 따로 집계
+//  · tvrenew : 개통일 기준 — TV약정갱신(개통완료)=티약갱, 무선(모바일 개통완료)=무선
+//  · gift    : 상품권(고객이력) — 상담일자=집계일인 메모의 상품권 등록건수를 상담자별로
+//  · img     : 이미징 변경이력 — 인증(일반/약갱)·간편작성
+var PA_LOADERS={
+  wired:function(rows){ PA_WIRED_ROWS=rows; return rows.length+'건 불러옴'; },
+  tvrenew:function(rows){ PA_TVRENEW_ROWS=rows;
     var tvCnt=rows.filter(function(r){ return r['상품명']==='KT_TV(약정갱신)'; }).length;
     var wlCnt=rows.filter(function(r){ return paIsWirelessProduct(r['상품명']); }).length;
-    document.getElementById('pa-tvrenew-status').textContent='✅ '+rows.length+'건 (TV약정갱신 '+tvCnt+' / 무선 '+wlCnt+')';
+    return rows.length+'건 (TV약정갱신 '+tvCnt+' / 무선 '+wlCnt+')'; },
+  gift:function(rows){ PA_GIFT_ROWS=rows; return rows.length+'건 불러옴'; },
+  img:function(rows){ PA_IMG_ROWS=rows; var hit=rows.filter(function(r){ return paClassifyImaging(r); }).length; return rows.length+'건 (인증·간편작성 해당 '+hit+')'; }
+};
+function paLoadKind(kind, file, via){
+  var st=document.getElementById('pa-'+kind+'-status');
+  if(st) st.textContent='읽는 중...';
+  paParseHtmlXls(file,function(rows,err){
+    if(err){ if(st) st.textContent='❌ '+err; return; }
+    var msg=PA_LOADERS[kind](rows);
+    if(st) st.textContent='✅ '+(via?via+' · ':'')+msg;
     paRenderResult();
   });
+}
+['wired','tvrenew','gift','img'].forEach(function(k){
+  var el=document.getElementById('pa-'+k+'-file');
+  if(el) el.addEventListener('change',function(e){ var f=e.target.files[0]; if(f) paLoadKind(k,f); });
 });
 document.getElementById('pa-phone-file') && document.getElementById('pa-phone-file').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
@@ -4784,17 +4795,6 @@ document.getElementById('pa-phone-file') && document.getElementById('pa-phone-fi
     }catch(err){ document.getElementById('pa-phone-status').textContent='❌ 읽기 실패: '+err.message; }
   };
   reader.readAsArrayBuffer(f);
-});
-// 상품권(고객이력) 파일: 상담일자=집계일인 메모의 상품권 등록건수를 상담자별로 집계 (paAggregate 참고)
-document.getElementById('pa-gift-file') && document.getElementById('pa-gift-file').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  document.getElementById('pa-gift-status').textContent='읽는 중...';
-  paParseHtmlXls(f,function(rows,err){
-    if(err){ document.getElementById('pa-gift-status').textContent='❌ '+err; return; }
-    PA_GIFT_ROWS=rows;
-    document.getElementById('pa-gift-status').textContent='✅ '+rows.length+'건 불러옴';
-    paRenderResult();
-  });
 });
 // workline 진단 북마클릿: workline 페이지에서 실행하면 이후 엑셀 다운로드 시 나가는 요청(주소/방식/조건값)만 기록해
 // 화면에 보여주고 복사할 수 있게 한다. 쿠키·헤더·응답(고객데이터)은 읽지 않고, URL의 token/key 류 값은 가린다.
@@ -4886,18 +4886,119 @@ function wlDiagBookmarklet(){
   };
 }
 (function(){ var a=document.getElementById('wl-diag-link'); if(a) a.setAttribute('href','javascript:'+encodeURIComponent('('+wlDiagBookmarklet.toString()+')()')); })();
-// 이미징 변경이력 파일: 인증(일반/약갱)·간편작성 집계 (paAggregate 참고)
-document.getElementById('pa-img-file') && document.getElementById('pa-img-file').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  document.getElementById('pa-img-status').textContent='읽는 중...';
-  paParseHtmlXls(f,function(rows,err){
-    if(err){ document.getElementById('pa-img-status').textContent='❌ '+err; return; }
-    PA_IMG_ROWS=rows;
-    var hit=rows.filter(function(r){ return paClassifyImaging(r); }).length;
-    document.getElementById('pa-img-status').textContent='✅ '+rows.length+'건 (인증·간편작성 해당 '+hit+')';
-    paRenderResult();
-  });
+// ════════════════════════════════════════════════════════════
+//  workline 바로 가져오기
+//  인트라넷(github.io)은 브라우저 보안상 workline 데이터를 직접 못 읽으므로,
+//  인트라넷이 연 workline 창에서 즐겨찾기 버튼(wlSendBookmarklet)을 누르면 그 창(로그인 세션)에서
+//  workline의 "엑셀저장"과 같은 내보내기 작업을 돌려 파일을 받아 postMessage로 인트라넷에 넘긴다.
+//  무엇을 받을지(주소)는 인트라넷이 알려주므로, 주소가 바뀌어도 즐겨찾기 버튼은 다시 안 만들어도 된다.
+// ════════════════════════════════════════════════════════════
+var WL_ORIGIN='https://workline.kr';
+var WL_REQ=null; // {date} - [workline 열기]를 누른 뒤에만 데이터 수신
+function wlJobs(d){
+  var q='dateFrom='+d+'&dateTo='+d, P='/api/orders/export-jobs/{id}', DL='/api/orders/export-jobs/{id}/download';
+  return [
+    {kind:'wired',  label:'접수일 기준',     start:'/api/orders/export?size=10000&variant=a&history=1&dateField=g_date_yuchi&'+q,   poll:P, download:DL},
+    {kind:'tvrenew',label:'개통일 기준',     start:'/api/orders/export?size=10000&variant=a&history=1&dateField=g_date_gaetong&'+q, poll:P, download:DL},
+    {kind:'gift',   label:'상품권(고객이력)', start:'/api/consults/export?'+q,                                                        poll:P, download:DL},
+    {kind:'img',    label:'인증(이미징)',     start:'/api/status-logs/export?kind=imging&'+q,                                         poll:P, download:DL}
+  ];
+}
+function wlStatus(t){ var el=document.getElementById('wl-status'); if(el) el.textContent=t; }
+document.getElementById('wl-open-btn') && document.getElementById('wl-open-btn').addEventListener('click',function(){
+  var d=(document.getElementById('pa-date')||{}).value;
+  if(!d){ alert('먼저 위에서 집계 날짜를 선택해주세요.'); return; }
+  WL_REQ={date:d};
+  window.open(WL_ORIGIN+'/#customer-all','workline');
+  wlStatus('열린 workline 창에서 즐겨찾기 [📥 인트라넷으로 보내기]를 눌러주세요 ('+d+')');
 });
+window.addEventListener('message',function(ev){
+  if(ev.origin!==WL_ORIGIN) return;
+  var m=ev.data; if(!m||typeof m!=='object') return;
+  function kindStatus(kind,t){ var st=document.getElementById('pa-'+kind+'-status'); if(st) st.textContent=t; }
+  if(m.type==='wl-hello'){
+    if(!WL_REQ||!CU||CU.role!=='admin'){ ev.source.postMessage({type:'wl-reject',msg:'인트라넷 실적집계에서 날짜를 고르고 [🔗 workline 열기]를 먼저 눌러주세요.'},WL_ORIGIN); return; }
+    var d=(document.getElementById('pa-date')||{}).value||WL_REQ.date; WL_REQ.date=d;
+    ev.source.postMessage({type:'wl-request',date:d,jobs:wlJobs(d)},WL_ORIGIN);
+    wlStatus('⏳ '+d+' 데이터 가져오는 중... (workline 창은 끝날 때까지 열어두세요)');
+  } else if(m.type==='wl-progress'){
+    if(PA_LOADERS[m.kind]) kindStatus(m.kind,'⏳ '+String(m.msg||''));
+  } else if(m.type==='wl-file'){
+    if(!WL_REQ||m.date!==WL_REQ.date||!PA_LOADERS[m.kind]||!(m.buf instanceof ArrayBuffer)) return;
+    paLoadKind(m.kind,new Blob([m.buf]),'workline '+m.date);
+  } else if(m.type==='wl-error'){
+    if(PA_LOADERS[m.kind]) kindStatus(m.kind,'❌ '+String(m.msg||'')+' — 파일로 올려주세요');
+  } else if(m.type==='wl-done'){
+    wlStatus((m.ok===m.total?'✅ ':'⚠️ ')+m.date+' 가져오기 '+m.ok+'/'+m.total+'건 완료 — 전화(CTI)는 파일로 올려주세요');
+  }
+});
+// 즐겨찾기 버튼 본체 (workline 창에서 실행). 자기완결 함수여야 함 - toString()으로 북마클릿 코드가 됨.
+function wlSendBookmarklet(){
+  var INTRANET='https://wooriwoosin.github.io';
+  if(!/(^|\.)workline\.kr$/.test(location.hostname)){ alert('workline.kr 화면에서 눌러주세요.'); return; }
+  var op=window.opener;
+  if(!op||op.closed){ alert('인트라넷 실적집계의 [🔗 workline 열기] 버튼으로 연 창에서 눌러주세요.'); return; }
+  if(window.__wlSending){ alert('이미 가져오는 중이에요.'); return; }
+  window.__wlSending=true;
+  var box=document.createElement('div');
+  box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483647;width:380px;max-height:60vh;overflow:auto;background:#fff;border:2px solid #1D9E75;border-radius:10px;padding:10px 12px;font:13px/1.6 sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);color:#111;text-align:left';
+  box.innerHTML='<b>📥 인트라넷으로 보내기</b> <span id="__wsx" style="float:right;cursor:pointer;color:#999">✕</span><div id="__wslog" style="margin-top:6px;white-space:pre-wrap"></div>';
+  document.body.appendChild(box);
+  document.getElementById('__wsx').onclick=function(){ box.remove(); };
+  var lines=[];
+  function say(t){ lines.push(t); var el=document.getElementById('__wslog'); if(el) el.textContent=lines.join('\n'); }
+  function send(msg,tr){ try{ op.postMessage(msg,INTRANET,tr||[]); }catch(e){} }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  function safe(u){ if(typeof u!=='string'||!/^\/api\/[A-Za-z0-9_\-\/]+(\?[A-Za-z0-9_\-=&.%]*)?$/.test(u)) throw new Error('허용되지 않은 주소'); return u; }
+  async function getJson(u){
+    var r=await fetch(safe(u),{credentials:'same-origin',headers:{'Accept':'application/json'}});
+    var t=await r.text(), j=null; try{ j=JSON.parse(t); }catch(e){}
+    if(r.status===401||r.status===403) throw new Error('workline 로그인이 필요해요 (로그인 후 다시 눌러주세요)');
+    if(!j) throw new Error('응답 형식 오류 ('+r.status+')');
+    if(!r.ok&&r.status!==202) throw new Error((j.error&&(j.error.message||j.error))||('오류 '+r.status));
+    return j;
+  }
+  async function runJob(j){
+    var s=await getJson(j.start); var job=(s&&(s.job||s.data))||{}; var id=(job.jobId!=null?job.jobId:job.id);
+    if(id==null) throw new Error('엑셀 작업번호를 못 받았어요');
+    for(var i=0;;i++){
+      var st=String(job.status||'');
+      if(job.error||/fail|error|cancel/i.test(st)) throw new Error('엑셀 생성 실패: '+(job.error||st));
+      if(job.downloadable===true||/^(done|complete|completed|success|succeeded|finished)$/i.test(st)) break;
+      if(i>=200) throw new Error('엑셀 생성 시간 초과');
+      send({type:'wl-progress',kind:j.kind,msg:j.label+' 엑셀 만드는 중'+(job.percent!=null?' '+job.percent+'%':'')+(job.queueAhead?' (대기 '+job.queueAhead+'건)':'')});
+      await sleep(1500);
+      var p=await getJson(j.poll.replace('{id}',encodeURIComponent(id))); job=(p&&(p.job||p.data))||job;
+    }
+    var r=await fetch(safe(j.download.replace('{id}',encodeURIComponent(id))),{credentials:'same-origin'});
+    if(!r.ok) throw new Error('파일 받기 실패 ('+r.status+')');
+    return r.arrayBuffer();
+  }
+  async function run(req){
+    var jobs=req.jobs||[], ok=0;
+    say('📅 '+req.date+' 데이터 '+jobs.length+'가지를 가져와요. 끝날 때까지 이 창을 닫지 마세요.');
+    for(var k=0;k<jobs.length;k++){
+      var j=jobs[k]; say('⏳ '+j.label+' ...');
+      try{ var buf=await runJob(j); send({type:'wl-file',date:req.date,kind:j.kind,buf:buf},[buf]); ok++; say('✅ '+j.label); }
+      catch(e){ var msg=(e&&e.message)||String(e); send({type:'wl-error',kind:j.kind,msg:j.label+': '+msg}); say('❌ '+j.label+': '+msg); }
+    }
+    send({type:'wl-done',date:req.date,ok:ok,total:jobs.length});
+    say(ok===jobs.length?'🎉 완료! 인트라넷 창으로 돌아가세요.':'⚠️ 일부 실패 — 인트라넷 화면에서 확인해주세요.');
+    window.__wlSending=false;
+  }
+  var got=false;
+  function onMsg(ev){
+    if(ev.origin!==INTRANET) return; var m=ev.data||{};
+    if(m.type==='wl-request'){ got=true; window.removeEventListener('message',onMsg); run(m); }
+    else if(m.type==='wl-reject'){ got=true; window.removeEventListener('message',onMsg); say('❌ '+m.msg); window.__wlSending=false; }
+  }
+  window.addEventListener('message',onMsg);
+  say('인트라넷과 연결하는 중...');
+  send({type:'wl-hello'});
+  setTimeout(function(){ if(!got){ say('❌ 인트라넷 창과 연결이 안 됐어요. 인트라넷 창을 닫지 말고 [🔗 workline 열기]로 다시 열어서 눌러주세요.'); window.__wlSending=false; } },5000);
+}
+(function(){ var a=document.getElementById('wl-send-link'); if(a) a.setAttribute('href','javascript:'+encodeURIComponent('('+wlSendBookmarklet.toString()+')()')); })();
+
 function paRenderPhoneMap(){
   var wrap=document.getElementById('pa-phone-map');
   if(!wrap) return;
