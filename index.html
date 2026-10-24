@@ -4729,6 +4729,13 @@ function paLoadAnnualsForDate(date,cb){
 }
 
 // ── 실적집계 탭 초기화 ──
+// 그날 근무하지 않는 사람(근무없음·연차 종일·공가 등 8시간 이상) → 고정업무·VOC를 그날은 적용하지 않음.
+// 체크해둔 고정업무 자체는 지우지 않으므로 다음 근무일(또는 휴일근무로 바꾸면) 그대로 다시 적용됨.
+function paIsOffLeave(leave){
+  if(leave==='근무없음') return true;
+  var o=PA_LEAVE_OPTS.find(function(x){ return x.v===leave; });
+  return !!(o&&o.hours>=8);
+}
 function paDefaultLeaveFor(date,map,empId){
   var v=map[empId]||'';
   if(!v&&isOffDay(date)) return '근무없음';
@@ -5114,8 +5121,9 @@ function paRenderResult(){
     var leaveSelect='<select class="pa-pill-select" data-emp="'+e.id+'" data-role="leave">'+
       PA_LEAVE_OPTS.map(function(o){return '<option value="'+o.v+'"'+(o.v===st.leave?' selected':'')+'>'+(o.l==='-'?'연차 없음':o.l)+'</option>';}).join('')+'</select>';
 
-    var fixNames=st.fixdurNames||[];
-    var fixChips=PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
+    var off=paIsOffLeave(st.leave);
+    var fixNames=off?[]:(st.fixdurNames||[]);
+    var fixChips=off?('<span style="font-size:11px;color:var(--tm);font-weight:600">🛌 근무 안 함<br><span style="font-weight:400">(고정업무 미적용)</span></span>'):PA_FIXDUR.filter(function(fd){return fd.name;}).map(function(fd){
       var on=fixNames.indexOf(fd.name)!==-1;
       return '<span class="pa-fixdur-chip'+(on?' on':'')+'" data-emp="'+e.id+'" data-fdname="'+fd.name.replace(/"/g,'&quot;')+'">🔧 '+fd.name+'</span>';
     }).join('');
@@ -5156,7 +5164,7 @@ function paRenderResult(){
     retiredList.map(buildCard).join('')+'</details>' : '');
 
   wrap.querySelectorAll('select[data-role="leave"]').forEach(function(sel){
-    sel.addEventListener('change',function(){ PA_ROWSTATE[sel.dataset.emp].leave=sel.value; });
+    sel.addEventListener('change',function(){ PA_ROWSTATE[sel.dataset.emp].leave=sel.value; paRenderResult(); });
   });
   wrap.querySelectorAll('.pa-fixdur-chip').forEach(function(chip){
     chip.addEventListener('click',function(){
@@ -5265,7 +5273,9 @@ function paPublish(){
     var st=PA_ROWSTATE[e.id]||{leave:'',fixdurNames:[],voc:0};
     var c=counts[e.name]||paEmptyCounts();
     var ph=paGetPhoneStat(e.name)||{O_CONN:0,O_TIME:0,I_CONN:0,I_TIME:0,P_CONN:0,P_TIME:0};
-    var fixdurHours=(st.fixdurNames||[]).reduce(function(sum,name){
+    var off=paIsOffLeave(st.leave); // 근무 안 한 날은 고정업무·VOC 미적용
+    var fixList=off?[]:(st.fixdurNames||[]);
+    var fixdurHours=fixList.reduce(function(sum,name){
       var fd=PA_FIXDUR.find(function(x){return x.name===name;});
       return sum+(fd?Number(fd.hours)||0:0);
     },0);
@@ -5277,7 +5287,7 @@ function paPublish(){
       인증:c.인증||0, 인증_일반:c.인증_일반||0, 인증_약갱:c.인증_약갱||0, 간편작성:c.간편작성||0,
       발신콜:ph.O_CONN, 발신시간:paS2hms(ph.O_TIME), 수신콜:ph.I_CONN, 수신시간:paS2hms(ph.I_TIME),
       땡김콜:ph.P_CONN, 땡김시간:paS2hms(ph.P_TIME),
-      고정업무:(st.fixdurNames||[]).join(', '), 고정업무시간:fixdurHours, 연차유형:st.leave||'', VOC:st.voc||0
+      고정업무:fixList.join(', '), 고정업무시간:fixdurHours, 연차유형:st.leave||'', VOC:off?0:(st.voc||0)
     };
   });
   var btn=document.getElementById('pa-publish-btn');
