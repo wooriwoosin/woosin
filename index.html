@@ -385,6 +385,7 @@ table.pt td.otc{background:#FFF8F8;}
       <div class="dbar" style="margin-bottom:14px;flex-wrap:wrap">
         <label>집계 날짜</label>
         <input type="date" id="pa-date">
+        <span id="pa-date-hint" style="font-size:11.5px;color:var(--tm)"></span>
         <button class="btn btn-se btn-sm" id="pa-load-btn">해당일 기존 게시분 불러오기</button>
         <span style="margin-left:auto;font-size:12px;color:var(--tm)">관리자 전용 · 게시하면 그날 실적이 [전체실적]에 반영됩니다</span>
       </div>
@@ -4733,15 +4734,55 @@ function paDefaultLeaveFor(date,map,empId){
   if(!v&&isOffDay(date)) return '근무없음';
   return v;
 }
+// 오늘(로컬) YYYY-MM-DD
+function paToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// 다음에 집계할 날짜 = 마지막 게시일 다음날 (일요일·공휴일은 건너뜀, 오늘을 넘지 않음). 게시 기록이 없으면 어제.
+function paNextPendingDate(cb){
+  api('getLatestPerfDate',{}).then(function(r){
+    var today=paToday(), base=(r&&r.ok&&r.date)?String(r.date).slice(0,10):null;
+    var d=base?new Date(base+'T00:00:00'):new Date(today+'T00:00:00');
+    for(var i=0;i<14;i++){
+      d.setDate(d.getDate()+(base?1:-1));
+      var ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      if(d.getDay()!==0 && !isHoliday(ds)) break;
+    }
+    var out=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    cb(out>today?today:out, base);
+  });
+}
+// 불러온 로우데이터가 있는지 (작업 중이면 날짜를 자동으로 바꾸지 않음)
+function paHasRaw(){ return !!(PA_WIRED_ROWS.length||PA_TVRENEW_ROWS.length||PA_GIFT_ROWS.length||PA_IMG_ROWS.length||PA_PHONE_ROWS.length); }
+// 로우데이터 비우기 - 날짜가 바뀌면 이전 날짜 파일이 새 날짜 실적으로 섞여 게시되지 않도록
+function paClearRaw(msg){
+  PA_WIRED_ROWS=[]; PA_TVRENEW_ROWS=[]; PA_GIFT_ROWS=[]; PA_IMG_ROWS=[]; PA_PHONE_ROWS=[]; PA_MANUAL_ADJ=[];
+  ['wired','tvrenew','phone','gift','img'].forEach(function(k){
+    var st=document.getElementById('pa-'+k+'-status'); if(st) st.textContent='';
+    var fi=document.getElementById('pa-'+k+'-file'); if(fi) fi.value='';
+  });
+  Object.keys(PA_ROWSTATE).forEach(function(id){ PA_ROWSTATE[id].voc=0; });
+  if(typeof WL_REQ!=='undefined') WL_REQ=null;
+  if(typeof wlStatus==='function') wlStatus(msg||'');
+  paRenderPhoneMap();
+}
+function paApplyDate(date){
+  var dateEl=document.getElementById('pa-date'); if(dateEl) dateEl.value=date;
+  PA_DATE_PREV=date;
+  paLoadAnnualsForDate(date,function(map){
+    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; PA_ROWSTATE[e.id].leave=paDefaultLeaveFor(date,map,e.id); });
+    paRenderResult();
+  });
+}
+var PA_DATE_PREV='';
 function loadPerfAgg(){
   var dateEl=document.getElementById('pa-date');
-  if(dateEl && !dateEl.value) dateEl.value=new Date().toISOString().slice(0,10);
   paRenderFixdurList();
   paLoadEmployees(function(){
     PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; });
-    paLoadAnnualsForDate(dateEl.value,function(map){
-      PA_EMP.forEach(function(e){ PA_ROWSTATE[e.id].leave=paDefaultLeaveFor(dateEl.value,map,e.id); });
-      paRenderResult();
+    if(paHasRaw() && dateEl.value){ paApplyDate(dateEl.value); return; } // 작업 중 → 날짜 유지
+    paNextPendingDate(function(next,last){
+      paApplyDate(next);
+      var hint=document.getElementById('pa-date-hint');
+      if(hint) hint.textContent=last?('마지막 게시 '+last+' → 다음 집계 '+next+' (일요일·공휴일 건너뜀, 근무했다면 날짜 직접 변경)'):'';
     });
   });
 }
@@ -5240,18 +5281,26 @@ function paPublish(){
   if(btn) btn.textContent='게시 중...';
   api('publishDailyPerf',{date:date,rows:rows}).then(function(res){
     if(btn) btn.textContent='📤 게시';
-    if(res.ok){ addLog(date+' 실적집계 게시 ('+rows.length+'명)'); alert('✅ '+date+' 실적이 게시되었습니다.'+(res.warn?'\n\n⚠️ '+res.warn:'')); }
+    if(res.ok){
+      addLog(date+' 실적집계 게시 ('+rows.length+'명)');
+      paClearRaw('✅ '+date+' 게시 완료');
+      paNextPendingDate(function(next){
+        alert('✅ '+date+' 실적이 게시되었습니다.'+(res.warn?'\n\n⚠️ '+res.warn:'')+(next!==date?'\n\n다음 집계 날짜 '+next+'(으)로 넘어갑니다.':''));
+        paApplyDate(next);
+        var hint=document.getElementById('pa-date-hint'); if(hint) hint.textContent='마지막 게시 '+date+' → 다음 집계 '+next;
+      });
+    }
     else alert(res.error||'게시 실패');
   });
 }
 document.getElementById('pa-publish-btn') && document.getElementById('pa-publish-btn').addEventListener('click',paPublish);
 document.getElementById('pa-date') && document.getElementById('pa-date').addEventListener('change',function(){
   var date=this.value; if(!date) return;
-  PA_MANUAL_ADJ=[];
-  paLoadAnnualsForDate(date,function(map){
-    PA_EMP.forEach(function(e){ if(!PA_ROWSTATE[e.id]) PA_ROWSTATE[e.id]={leave:'',fixdurNames:[],voc:0}; PA_ROWSTATE[e.id].leave=paDefaultLeaveFor(date,map,e.id); });
-    paRenderResult();
-  });
+  if(paHasRaw()){
+    if(!confirm('집계 날짜를 '+date+'(으)로 바꾸면, 지금 불러온 로우데이터('+(PA_DATE_PREV||'이전 날짜')+')가 비워집니다.\n새 날짜 데이터를 다시 가져와야 해요. 계속할까요?')){ this.value=PA_DATE_PREV; return; }
+    paClearRaw('날짜가 바뀌어 불러온 데이터를 비웠어요 → '+date+' 데이터를 다시 가져와주세요');
+  } else { PA_MANUAL_ADJ=[]; }
+  paApplyDate(date);
 });
 
 // ── 전체실적 (읽기전용, 로그인 기본화면) ──
