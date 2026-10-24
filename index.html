@@ -402,8 +402,8 @@ table.pt td.otc{background:#FFF8F8;}
         <div style="margin-top:12px;padding:10px 12px;border:1.5px dashed var(--bs);border-radius:8px;font-size:12px;color:var(--ts);line-height:1.7">
           🧪 <b>workline 자동 가져오기 준비 (진단)</b><br>
           ① 오른쪽 버튼을 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> →
-          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단 v2</a> <span style="color:var(--tm)">(예전 진단 버튼은 지우고 이걸로 다시 끌어다 놓기)</span><br>
-          ② workline에서 엑셀 받는 화면을 열고 즐겨찾기의 <b>🔍 workline 진단 v2</b> 클릭 → ③ <b>조회</b> 버튼 → <b>엑셀 다운로드</b> 버튼 클릭 → ④ 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
+          <a id="wl-diag-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ac);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">🔍 workline 진단 v3</a> <span style="color:var(--tm)">(예전 진단 버튼은 지우고 이걸로 다시 끌어다 놓기)</span><br>
+          ② workline에서 날짜 조건이 들어간 화면을 열고 즐겨찾기의 <b>🔍 workline 진단 v3</b> 클릭 → ③ 2~3초 뒤 오른쪽 아래 상자의 <b>📋 결과 복사</b> → 채팅에 붙여넣기
         </div>
       </div>
 
@@ -4804,7 +4804,7 @@ function wlDiagBookmarklet(){
   var log=[]; window.__wlDiag=log;
   var box=document.createElement('div');
   box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483647;width:460px;max-height:60vh;overflow:auto;background:#fff;border:2px solid #3B6FE8;border-radius:10px;padding:10px 12px;font:12px/1.5 sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);color:#111;text-align:left';
-  box.innerHTML='<b>🔍 workline 진단 기록 중 (<span id="__wcnt">0</span>건)</b><br><b>조회</b> 버튼 → <b>엑셀 다운로드</b> 버튼을 눌러주세요.<div id="__wlog" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:11px"></div>'+
+  box.innerHTML='<b>🔍 workline 진단 기록 중 (<span id="__wcnt">0</span>건)</b><br>2~3초 기다렸다가 <b>📋 결과 복사</b>를 눌러주세요.<div id="__wlog" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:11px"></div>'+
     '<button id="__wcopy" style="margin-top:8px;padding:4px 10px">📋 결과 복사</button> <button id="__wclear" style="padding:4px 10px">지우기</button>';
   document.body.appendChild(box);
   var STATIC=/\.(js|mjs|css|png|jpe?g|gif|svg|webp|woff2?|ttf|eot|ico|map)(\?|#|$)/i;
@@ -4864,9 +4864,23 @@ function wlDiagBookmarklet(){
     try{ new w.MutationObserver(function(){ if(!pending){ pending=true; setTimeout(scan,300); } }).observe(w.document.documentElement,{childList:true,subtree:true}); }catch(e){}
   }
   hookWin(window,'');
+  // 화면이 이미 불러온 목록 요청(GET /api/...)을 한 번 더 조회해서 "칸 이름"만 확인 (읽기 전용, 값은 기록 안 함)
+  try{
+    var skip=/\/api\/(auth|codes|popup|notice|dealers|users)(\/|\?|$)/;
+    var seen={}, urls=[];
+    (performance.getEntriesByType('resource')||[]).forEach(function(en){
+      if((en.initiatorType==='fetch'||en.initiatorType==='xmlhttprequest')&&en.name.indexOf(location.origin+'/api/')===0&&!skip.test(en.name)&&!seen[en.name]){ seen[en.name]=1; urls.push(en.name); }
+    });
+    urls.slice(-6).forEach(function(u){
+      fetch(u,{credentials:'same-origin'}).then(function(r){ var ct=r.headers.get('content-type')||'';
+        if(/json/i.test(ct)) return r.json().then(function(j){ add('칸확인',cut(u)+'\n   '+shape(j)); });
+        add('칸확인',cut(u)+'\n   '+respInfo(r.status,ct,r.headers.get('content-disposition')));
+      }).catch(function(e){ add('칸확인',cut(u)+'\n   실패: '+(e&&e.message)); });
+    });
+  }catch(e){}
   document.getElementById('__wclear').onclick=function(){ log.length=0; render(); };
   document.getElementById('__wcopy').onclick=function(){
-    var t='[workline 진단 v2] '+mask(location.href)+'\n'+log.map(function(x,i){ return (i+1)+'. ['+x.t+'] ('+x.at+') '+x.d; }).join('\n');
+    var t='[workline 진단 v3] '+mask(location.href)+'\n'+log.map(function(x,i){ return (i+1)+'. ['+x.t+'] ('+x.at+') '+x.d; }).join('\n');
     if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ alert('복사됐어요! ('+log.length+'건) 채팅에 붙여넣어 주세요.'); },function(){ prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t); });
     else prompt('아래 내용을 전체 복사해 주세요 (Ctrl+A, Ctrl+C)',t);
   };
