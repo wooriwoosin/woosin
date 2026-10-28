@@ -187,6 +187,8 @@ table.pt td.otc{background:#FFF8F8;}
 .cc-h75pm{background:#FFF0DB;color:#8A5300;}
 .cc-hham{background:#EEEDFE;color:#3C3489;}
 .cc-hhpm{background:#EEEDFE;color:#3C3489;}
+.cc-hmid2{background:#E0F7FA;color:#00606B;}
+.cc-hmid4{background:#D9F2F7;color:#004E5A;}
 .cc-ot{background:#FCEBEB;color:#A32D2D;}
 .cc-hw{background:#E8ECF7;color:#2A3A7A;}
 .cc-gg{background:#E6F4EA;color:#1B6B3A;}
@@ -495,6 +497,8 @@ table.pt td.otc{background:#FFF8F8;}
           <span class="cc cc-h75pm" style="display:inline-block">0.75차(17시출근)</span>
           <span class="cc cc-hham" style="display:inline-block">오전반반차</span>
           <span class="cc cc-hhpm" style="display:inline-block">오후반반차</span>
+          <span class="cc cc-hmid2" style="display:inline-block">중간반차(2시간)</span>
+          <span class="cc cc-hmid4" style="display:inline-block">중간반차(4시간)</span>
           <span class="cc cc-hw" style="display:inline-block">휴일근무 (토/일)</span>
           <span class="cc cc-gg" style="display:inline-block">공가(예비군)</span>
           <span class="cc cc-ot" style="display:inline-block">야근</span>
@@ -1052,6 +1056,8 @@ var ATYPES=[
   {k:'0.75차(17시출근)',l:'0.75차 (17시출근, 6시간)',c:'cc-h75pm'},
   {k:'오전반반차',l:'오전반반차',c:'cc-hham'},
   {k:'오후반반차',l:'오후반반차',c:'cc-hhpm'},
+  {k:'중간반차(2시간)',l:'중간반차 (2시간, 업무 중간)',c:'cc-hmid2'},
+  {k:'중간반차(4시간)',l:'중간반차 (4시간, 업무 중간)',c:'cc-hmid4'},
   {k:'휴일근무',l:'휴일근무',c:'cc-hw',weekendOnly:true},
   {k:'공가(예비군)',l:'공가(예비군)',c:'cc-gg'}
 ];
@@ -1260,9 +1266,13 @@ function pushTargetChange(hist, dateStr, value){
   hist.sort(function(a,b){return a.date<b.date?-1:(a.date>b.date?1:0);});
   return hist;
 }
-// 연차 유형별 하루 차감 비율 (종일=1, 반차=0.5, 반반차=0.25)
+// 연차 유형별 사용시간(하루 8시간 기준)
+var LEAVE_TYPE_HOURS={'연차':8,'오전반차':4,'오후반차':4,'0.75차(12시퇴근)':6,'0.75차(17시출근)':6,
+  '오전반반차':2,'오후반반차':2,'중간반차(2시간)':2,'중간반차(4시간)':4,'공가(예비군)':8};
+// 연차 유형별 하루 차감 비율 = 사용시간 ÷ 8 (종일=1, 0.75차=0.75, 반차·중간반차4h=0.5, 반반차·중간반차2h=0.25)
 function leaveFraction(annType){
   if(!annType) return 0;
+  if(LEAVE_TYPE_HOURS[annType]!=null) return LEAVE_TYPE_HOURS[annType]/8;
   if(annType.indexOf('반반차')!==-1) return 0.25;
   if(annType.indexOf('반차')!==-1) return 0.5;
   return 1;
@@ -4039,7 +4049,7 @@ function abdg(s){
   if(s.indexOf('야근')!==-1) return '<span class="bdg b-r">'+s+'<\/span>';
   if(s==='연차') return '<span class="bdg b-gr">연차<\/span>';
   if(s.indexOf('조퇴')!==-1) return '<span class="bdg" style="background:#FEF3C7;color:#92400E">'+s+'<\/span>';
-  if(s.indexOf('반반차')!==-1) return '<span class="bdg b-b">'+s+'<\/span>';
+  if(s.indexOf('반반차')!==-1||s.indexOf('중간반차(2')!==-1) return '<span class="bdg b-b">'+s+'<\/span>';
   if(s.indexOf('반차')!==-1) return '<span class="bdg b-o">'+s+'<\/span>';
   return '<span class="bdg b-g">정상<\/span>';
 }
@@ -4302,6 +4312,7 @@ var PA_LEAVE_OPTS=[
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
   {v:'0.75차(12시퇴근)',l:'0.75차(12시퇴근, 6h)',hours:6},{v:'0.75차(17시출근)',l:'0.75차(17시출근, 6h)',hours:6},
   {v:'오전반반차',l:'오전반반차',hours:2},{v:'오후반반차',l:'오후반반차',hours:2},
+  {v:'중간반차(2시간)',l:'중간반차(2h)',hours:2},{v:'중간반차(4시간)',l:'중간반차(4h)',hours:4},
   {v:'휴일근무',l:'휴일근무',hours:0},{v:'공가(예비군)',l:'공가(예비군)',hours:8},
   {v:'근무없음',l:'근무없음 (휴일 미출근)',hours:0}
 ];
@@ -5665,7 +5676,7 @@ function prRangeFor(kind){
   }
   return {start:prFmtDate(s), end:prFmtDate(e)};
 }
-var PR_LEAVE_HOURS={'':0,'연차':8,'오전반차':4,'오후반차':4,'0.75차(12시퇴근)':6,'0.75차(17시출근)':6,'오전반반차':2,'오후반반차':2,'휴일근무':0,'공가(예비군)':8,'근무없음':0};
+var PR_LEAVE_HOURS={'':0,'연차':8,'오전반차':4,'오후반차':4,'0.75차(12시퇴근)':6,'0.75차(17시출근)':6,'오전반반차':2,'오후반반차':2,'중간반차(2시간)':2,'중간반차(4시간)':4,'휴일근무':0,'공가(예비군)':8,'근무없음':0};
 var PR_WORKDAY_HOURS=8;
 function loadPerfReport(){
   var startEl=document.getElementById('pr-start'), endEl=document.getElementById('pr-end');
