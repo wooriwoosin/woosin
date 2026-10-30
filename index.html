@@ -4307,6 +4307,10 @@ var PA_IMG_EXTERNAL=0; // 이미징변경이력 중 협력점(외부) 사원명�
 var PA_ROWSTATE={}; // empId -> {leave,fixdurNames,voc}
 var PA_EVIDENCE={}; var PA_UNMATCHED=[]; var PA_UNRESOLVED=[]; var PA_EXCLUDED=[];
 var PA_MANUAL_ADJ=[]; // [{name,cat,customer}] - 수기추가 개별항목 (삭제 가능하도록 리스트로 관리)
+// 담당자 수기 변경: 자동 판별된 건을 다른 직원 실적으로 옮김 {근거키: {to, from, cat, customer}}
+// (로우데이터를 직접 고칠 수 없는 workline 가져오기용. 날짜 변경·게시 시 함께 비워짐)
+var PA_REASSIGN={};
+function paEvKey(cat,customer,ts,content){ return cat+'|'+(customer||'')+'|'+(ts||'')+'|'+String(content||'').slice(0,80); }
 var PA_LEAVE_OPTS=[
   {v:'',l:'-',hours:0},{v:'연차',l:'연차(종일)',hours:8},
   {v:'오전반차',l:'오전반차',hours:4},{v:'오후반차',l:'오후반차',hours:4},
@@ -4521,6 +4525,8 @@ function paAggregate(){
   var counts={}; PA_UNMATCHED=[]; PA_EVIDENCE={}; PA_UNRESOLVED=[]; PA_EXCLUDED=[];
   var targetDate=(document.getElementById('pa-date')||{}).value||'';
   function addCount(name,cat,customer,ts,content,isTv,bucket){
+    var rk=paEvKey(cat,customer,ts,content), orig=name;
+    if(PA_REASSIGN[rk]) name=PA_REASSIGN[rk].to;
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cat]++;
     if(cat==='약정갱신'){
@@ -4529,7 +4535,7 @@ function paAggregate(){
       if(bucket) counts[name]['약정갱신_'+bucket]++;
     }
     var ek=name+'|'+cat; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
-    PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content});
+    PA_EVIDENCE[ek].push({customer:customer,ts:ts,content:content,key:rk,orig:orig});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' ('+cat+')');
   }
   // 그룹(고객+카테고리) 단위로 판단: 같은 고객이 상품(TV/인터넷 등) 여러 건으로 나뉘어 있을 때,
@@ -4637,10 +4643,12 @@ function paAggregate(){
     if(n<=0) return;
     var name=String(r['상담자']||'').trim();
     if(!name) return;
+    var gContent='['+n+'건] '+String(r['상담/이력 내용']||'').slice(0,80), gKey=paEvKey('상품권',r['고객명'],r['상담일자'],gContent), gOrig=name;
+    if(PA_REASSIGN[gKey]) name=PA_REASSIGN[gKey].to;
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name]['상품권']=(counts[name]['상품권']||0)+n;
     var ek=name+'|상품권'; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
-    PA_EVIDENCE[ek].push({customer:r['고객명']||'', ts:r['상담일자']||'', content:'['+n+'건] '+String(r['상담/이력 내용']||'').slice(0,80)});
+    PA_EVIDENCE[ek].push({customer:r['고객명']||'', ts:r['상담일자']||'', content:gContent, key:gKey, orig:gOrig});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' (상품권)');
   });
 
@@ -4651,11 +4659,13 @@ function paAggregate(){
     var cl=paClassifyImaging(r); if(!cl) return;
     var name=String(r['사원명']||'').trim(); if(!name) return;
     if(!paIsInternalName(name)){ PA_IMG_EXTERNAL++; return; }
+    var iContent=(cl.sub?'['+cl.sub+'] ':'')+r['통신사']+' '+r['상품명']+' → '+r['변경상태'], iKey=paEvKey(cl.cat,r['고객명'],r['변경일시'],iContent), iOrig=name;
+    if(PA_REASSIGN[iKey]) name=PA_REASSIGN[iKey].to;
     if(!counts[name]) counts[name]=paEmptyCounts();
     counts[name][cl.cat]++;
     if(cl.sub) counts[name]['인증_'+cl.sub]++;
     var ek=name+'|'+cl.cat; if(!PA_EVIDENCE[ek]) PA_EVIDENCE[ek]=[];
-    PA_EVIDENCE[ek].push({customer:r['고객명']||'', ts:r['변경일시']||'', content:(cl.sub?'['+cl.sub+'] ':'')+r['통신사']+' '+r['상품명']+' → '+r['변경상태']});
+    PA_EVIDENCE[ek].push({customer:r['고객명']||'', ts:r['변경일시']||'', content:iContent, key:iKey, orig:iOrig});
     if(!PA_EMP.find(function(e){return e.name===name;})) PA_UNMATCHED.push(name+' ('+cl.cat+')');
   });
 
@@ -4772,7 +4782,7 @@ function paNextPendingDate(cb){
 function paHasRaw(){ return !!(PA_WIRED_ROWS.length||PA_TVRENEW_ROWS.length||PA_GIFT_ROWS.length||PA_IMG_ROWS.length||PA_PHONE_ROWS.length); }
 // 로우데이터 비우기 - 날짜가 바뀌면 이전 날짜 파일이 새 날짜 실적으로 섞여 게시되지 않도록
 function paClearRaw(msg){
-  PA_WIRED_ROWS=[]; PA_TVRENEW_ROWS=[]; PA_GIFT_ROWS=[]; PA_IMG_ROWS=[]; PA_PHONE_ROWS=[]; PA_MANUAL_ADJ=[];
+  PA_WIRED_ROWS=[]; PA_TVRENEW_ROWS=[]; PA_GIFT_ROWS=[]; PA_IMG_ROWS=[]; PA_PHONE_ROWS=[]; PA_MANUAL_ADJ=[]; PA_REASSIGN={};
   ['wired','tvrenew','phone','gift','img'].forEach(function(k){
     var st=document.getElementById('pa-'+k+'-status'); if(st) st.textContent='';
     var fi=document.getElementById('pa-'+k+'-file'); if(fi) fi.value='';
@@ -5224,6 +5234,13 @@ function paRenderResult(){
       var uniq=Array.from(new Set(PA_UNMATCHED));
       html+='<div class="pa-warn-box">⚠️ 직원목록에 없는 이름 '+uniq.length+'건: '+uniq.join(', ')+'</div>';
     }
+    var reKeys=Object.keys(PA_REASSIGN);
+    if(reKeys.length){
+      html+='<div class="pa-warn-box" style="background:var(--al);border-color:var(--ac)"><b>✏️ 담당자 수기 변경 '+reKeys.length+'건</b><br>'+
+        reKeys.map(function(k){ var m=PA_REASSIGN[k];
+          return '<div class="pa-unresolved-row"><b>'+ntEsc(m.customer)+'</b> · '+ntEsc(m.cat)+' : '+ntEsc(m.from)+' → <b>'+ntEsc(m.to)+'</b> '+
+            '<button type="button" class="btn btn-se btn-xs pa-reassign-undo" data-k="'+ntEsc(k)+'">되돌리기</button></div>'; }).join('')+'</div>';
+    }
     if(PA_IMG_EXTERNAL){
       html+='<div class="pa-warn-box" style="background:#F0F0F0;border-color:var(--bs)"><b>ℹ️ 인증·간편작성 제외 '+PA_IMG_EXTERNAL+'건</b> — 협력점(외부) 이름으로 처리된 변경이력이라 직원 실적에서 뺐습니다.</div>';
     }
@@ -5239,6 +5256,9 @@ function paRenderResult(){
         PA_UNRESOLVED.splice(idx,1);
         paRenderResult();
       });
+    });
+    warnBox.querySelectorAll('.pa-reassign-undo').forEach(function(btn){
+      btn.addEventListener('click',function(){ delete PA_REASSIGN[btn.dataset.k]; paRenderResult(); });
     });
     warnBox.querySelectorAll('.pa-manual-del').forEach(function(btn){
       btn.addEventListener('click',function(){
@@ -5260,8 +5280,27 @@ window.paShowEvidence=function(name,cat){
   var list=PA_EVIDENCE[name+'|'+cat]||[];
   var box=document.getElementById('pa-evidence'); if(!box) return;
   if(!list.length){ box.innerHTML=''; return; }
-  box.innerHTML='<div class="pa-evidence-box"><b>'+name+' · '+cat+'</b> 판별 근거 ('+list.length+'건)<br>'+
-    list.map(function(ev){ return '<div class="pa-evidence-row"><b>'+ev.customer+'</b> <span class="pa-ev-ts">('+ev.ts+')</span><br>'+ev.content.slice(0,120)+(ev.content.length>120?'...':'')+'</div>'; }).join('')+'</div>';
+  var emps=PA_EMP.filter(function(e){ return !e.retired; });
+  box.innerHTML='<div class="pa-evidence-box"><b>'+ntEsc(name)+' · '+ntEsc(cat)+'</b> 판별 근거 ('+list.length+'건) <span style="color:var(--tm);font-size:11.5px">— 담당자가 다르면 건별로 바꿀 수 있어요</span><br>'+
+    list.map(function(ev,i){
+      var moved=PA_REASSIGN[ev.key];
+      var opts='<option value="">담당자 변경…</option>'+emps.filter(function(e){ return e.name!==name; }).map(function(e){ return '<option value="'+ntEsc(e.name)+'">'+ntEsc(e.name)+'</option>'; }).join('');
+      return '<div class="pa-evidence-row"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>'+ntEsc(ev.customer)+'</b> <span class="pa-ev-ts">('+ntEsc(ev.ts)+')</span>'+
+        (moved?'<span style="font-size:11px;color:var(--ac);font-weight:700">✏️ 수기변경 (원래 '+ntEsc(moved.from)+')</span> <button type="button" class="btn btn-se btn-xs pa-ev-undo" data-i="'+i+'">되돌리기</button>'
+              :'<select class="pa-ev-to" data-i="'+i+'" style="margin-left:auto;font-size:12px;padding:2px 6px;border:1.5px solid var(--b);border-radius:6px">'+opts+'</select>')+
+        '</div>'+ntEsc(String(ev.content).slice(0,120))+(String(ev.content).length>120?'...':'')+'</div>';
+    }).join('')+'</div>';
+  box.querySelectorAll('.pa-ev-to').forEach(function(sel){
+    sel.addEventListener('change',function(){
+      var ev=list[+sel.dataset.i]; var to=sel.value; if(!ev||!to) return;
+      if(!confirm(ev.customer+' ('+cat+') 건을 '+name+' → '+to+' 실적으로 옮길까요?')){ sel.value=''; return; }
+      PA_REASSIGN[ev.key]={to:to,from:ev.orig||name,cat:cat,customer:ev.customer};
+      paRenderResult(); paShowEvidence(name,cat);
+    });
+  });
+  box.querySelectorAll('.pa-ev-undo').forEach(function(btn){
+    btn.addEventListener('click',function(){ var ev=list[+btn.dataset.i]; if(!ev) return; delete PA_REASSIGN[ev.key]; paRenderResult(); paShowEvidence(name,cat); });
+  });
 };
 
 function paPublish(){
