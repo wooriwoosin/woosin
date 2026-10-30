@@ -4473,10 +4473,13 @@ function paFindStaffFromSiblings(g,targetDate){
   var sibs=(g.sibRows||[]).filter(function(r){ return own.indexOf(r)===-1 && !paIsRowExcluded(r['협력점'],r['상부점'],r['고객이력']); });
   if(!sibs.length) return null;
   var yu={}; own.concat(sibs).forEach(function(r){ if(r['유치자']) yu[r['유치자']]=true; });
-  var rel=g.renewKind==='tvrenew' ? /약갱|약정갱신|약정만료|티\s*-|티약/ : /인터넷|인업|인약/;
+  // 파트별로 관련 있는 메모만: TV약갱 / 인터넷 약갱·업셀 / 그 외(유선신규 등)는 약갱·업셀이 아닌 정식 접수양식
+  var relOk=g.renewKind==='tvrenew' ? function(c){ return /약갱|약정갱신|약정만료|티\s*-|티약/.test(c); }
+          : g.renewKind==='net'     ? function(c){ return /인터넷|인업|인약/.test(c); }
+          : function(c){ return paIsTemplateFormat(c)&&!/업셀|약갱|약정갱신/.test(c); };
   var entries=[];
   sibs.forEach(function(r){ paExtractEntries(r['고객이력']).forEach(function(e){ entries.push(e); }); });
-  entries=entries.filter(function(e){ return paIsInternalName(e.name)&&!yu[e.name]&&rel.test(e.content); });
+  entries=entries.filter(function(e){ return paIsInternalName(e.name)&&!yu[e.name]&&relOk(e.content); });
   var best=paPickBestEntry(entries,null,targetDate);
   return best?{name:best.name,ts:best.ts,content:'(같은 고객 다른 상품행 메모) '+best.content}:null;
 }
@@ -4590,7 +4593,7 @@ function paAggregate(){
         return;
       }
       var best=g.isTvUpsell?paFindTvUpsellStaff(eligibleRows,targetDate):paFindStaffFromRows(eligibleRows,targetDate);
-      if(!best && (g.renewKind==='net'||g.renewKind==='tvrenew')) best=paFindStaffFromSiblings(g,targetDate);
+      if(!best && g.sibRows && !g.isTvUpsell) best=paFindStaffFromSiblings(g,targetDate);
       if(!best && !g.isTvUpsell) best=paFindStaffFromYuchija(eligibleRows,targetDate);
       if(!best){ PA_UNRESOLVED.push({customer:g.name,cat:cat,reason:g.isTvUpsell?'TV 단독 업셀링 - "변경완" 메모 없음, 수동 확인 필요':paWhyUnresolved(eligibleRows,targetDate),key:key}); return; }
       if(cat==='약정갱신'){
