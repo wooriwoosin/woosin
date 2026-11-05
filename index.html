@@ -397,10 +397,21 @@ table.pt td.otc{background:#FFF8F8;}
         <div style="margin-bottom:14px;padding:12px 14px;border:1.5px solid var(--ac);background:var(--al);border-radius:10px;font-size:12.5px;color:var(--ts);line-height:1.7">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <b style="color:var(--ad)">⚡ workline에서 바로 가져오기</b>
-            <button type="button" class="btn btn-pr btn-sm" id="wl-open-btn">🔗 workline 열기</button>
-            <span id="wl-status" style="font-weight:600;color:var(--ad)"></span>
+            <button type="button" class="btn btn-se btn-sm" id="wl-direct-btn">⚡ 바로 가져오기</button>
+            <button type="button" class="btn btn-se btn-sm" id="wl-open-btn">🔗 workline 열기</button>
+            <span id="wl-direct-state" style="font-size:11.5px;color:var(--tm)">탬퍼몽키 확인 중...</span>
           </div>
-          <div style="margin-top:4px">① 위에서 <b>집계 날짜</b> 선택 → ② <b>[🔗 workline 열기]</b> → ③ 열린 workline 창에서 즐겨찾기 <b>[📥 인트라넷으로 보내기]</b> 클릭 → 접수일·개통일·상품권·인증 4개가 자동으로 들어옵니다. <span style="color:var(--tm)">(workline 창이 이미 열려 있으면 ②는 건너뛰고 그 창에서 바로 ③ · 전화 CTI는 파일로 올려주세요)</span></div>
+          <div id="wl-status" style="font-weight:600;color:var(--ad);margin-top:4px"></div>
+          <div style="margin-top:4px"><b>탬퍼몽키 설치한 PC:</b> 집계 날짜 선택 → <b>[⚡ 바로 가져오기]</b> 한 번이면 끝 <span style="color:var(--tm)">(같은 크롬에서 workline에 로그인돼 있어야 해요)</span></div>
+          <details id="wl-install-details" style="margin-top:6px"><summary style="cursor:pointer;color:var(--ad)">탬퍼몽키 설치 방법 (PC마다 한 번만)</summary>
+            <ol style="margin:6px 0 0 18px;padding:0">
+              <li>크롬 웹스토어에서 <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo" target="_blank" rel="noopener">Tampermonkey</a> 설치 → 주소창 오른쪽 퍼즐(🧩) 아이콘에서 <b>고정(📌)</b></li>
+              <li>크롬 주소창에 <code>chrome://extensions</code> 입력 → Tampermonkey의 <b>[세부정보]</b> → <b>"사용자 스크립트 허용"</b> 켜기 <span style="color:var(--tm)">(이 항목이 없으면 오른쪽 위 <b>개발자 모드</b> 켜기)</span></li>
+              <li><a href="workline-import.user.js" target="_blank" rel="noopener"><b>여기를 눌러 스크립트 설치</b></a> → 탬퍼몽키 화면에서 <b>[설치]</b></li>
+              <li>이 화면을 <b>새로고침(F5)</b> → 위에 "탬퍼몽키 연결됨"이 뜨면 완료</li>
+            </ol>
+          </details>
+          <div style="margin-top:2px"><b>탬퍼몽키 없는 PC:</b> ① 위에서 <b>집계 날짜</b> 선택 → ② <b>[🔗 workline 열기]</b> → ③ 열린 workline 창에서 즐겨찾기 <b>[📥 인트라넷으로 보내기]</b> 클릭 → 접수일·개통일·상품권·인증 4개가 자동으로 들어옵니다. <span style="color:var(--tm)">(workline 창이 이미 열려 있으면 ②는 건너뛰고 그 창에서 바로 ③ · 전화 CTI는 파일로 올려주세요)</span></div>
           <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--ad)">처음 한 번만: 즐겨찾기 버튼 설치</summary>
             <div style="margin-top:6px">오른쪽 버튼을 <b>클릭하지 말고</b> 브라우저 <b>즐겨찾기 줄로 끌어다 놓기</b> (즐겨찾기 줄이 안 보이면 Ctrl+Shift+B) →
               <a id="wl-send-link" href="#" style="display:inline-block;padding:3px 10px;border-radius:6px;background:var(--ok);color:#fff;text-decoration:none;font-weight:700" onclick="alert('클릭하지 말고, 즐겨찾기 줄로 끌어다 놓아주세요.');return false;">📥 인트라넷으로 보내기</a>
@@ -5019,11 +5030,36 @@ document.getElementById('wl-open-btn') && document.getElementById('wl-open-btn')
   window.open(WL_ORIGIN+'/#customer-all','workline');
   wlStatus('열린 workline 창에서 즐겨찾기 [📥 인트라넷으로 보내기]를 눌러주세요 ('+d+')');
 });
+// 탬퍼몽키 스크립트(workline-import.user.js) 연동: 설치돼 있으면 인트라넷 버튼 하나로 가져오기
+var WLX_VER=null;
+function wlxPost(msg){ msg.__wlx=true; msg.from='page'; window.postMessage(msg, location.origin); }
+function wlxRefreshUi(){
+  var b=document.getElementById('wl-direct-btn'), t=document.getElementById('wl-direct-state');
+  if(b){ b.classList.toggle('btn-pr',!!WLX_VER); b.classList.toggle('btn-se',!WLX_VER); }
+  if(t) t.textContent=WLX_VER?('탬퍼몽키 연결됨 v'+WLX_VER):'탬퍼몽키 미설치 — 아래 설치 방법 참고';
+}
+document.getElementById('wl-direct-btn') && document.getElementById('wl-direct-btn').addEventListener('click',function(){
+  if(!WLX_VER){
+    var det=document.getElementById('wl-install-details'); if(det) det.open=true;
+    alert('이 PC에 탬퍼몽키 스크립트가 아직 없어요. 아래 "설치 방법"대로 한 번만 설치해 주세요.\n(설치 전에는 [🔗 workline 열기] + 즐겨찾기 방식으로 가져올 수 있어요)');
+    return;
+  }
+  var d=(document.getElementById('pa-date')||{}).value;
+  if(!d){ alert('먼저 위에서 집계 날짜를 선택해주세요.'); return; }
+  WL_REQ={date:d};
+  ['wired','tvrenew','gift','img'].forEach(function(k){ var st=document.getElementById('pa-'+k+'-status'); if(st) st.textContent='⏳ 대기 중...'; });
+  wlStatus('⏳ '+d+' 데이터 가져오는 중... (엑셀 만드는 시간 때문에 몇십 초 걸려요)');
+  wlxPost({type:'wlx-run',date:d,jobs:wlJobs(d)});
+});
+setTimeout(function(){ wlxPost({type:'wlx-ping'}); },300);
+setTimeout(function(){ if(!WLX_VER) wlxRefreshUi(); },2000); // 응답 없으면 '미설치' 표시
 window.addEventListener('message',function(ev){
-  if(ev.origin!==WL_ORIGIN) return;
   var m=ev.data; if(!m||typeof m!=='object') return;
+  var fromUs=(ev.origin===location.origin&&m.__wlx===true&&m.from==='us'); // 탬퍼몽키
+  if(ev.origin!==WL_ORIGIN&&!fromUs) return;
   function kindStatus(kind,t){ var st=document.getElementById('pa-'+kind+'-status'); if(st) st.textContent=t; }
-  if(m.type==='wl-hello'){
+  if(fromUs&&m.type==='wlx-ready'){ WLX_VER=String(m.version||'?'); wlxRefreshUi(); return; }
+  if(m.type==='wl-hello'&&!fromUs){
     // 이미 열려 있는 workline 창에서 눌러도 됨 - 그 순간 인트라넷에 설정된 집계 날짜로 요청
     var d=(document.getElementById('pa-date')||{}).value;
     var why=(!CU||CU.role!=='admin')?'인트라넷에 관리자 계정으로 로그인해 주세요.':(!d?'인트라넷 실적집계에서 집계 날짜를 먼저 선택해 주세요.':'');
@@ -5037,8 +5073,15 @@ window.addEventListener('message',function(ev){
     if(!WL_REQ||m.date!==WL_REQ.date||!PA_LOADERS[m.kind]||!(m.buf instanceof ArrayBuffer)) return;
     paLoadKind(m.kind,new Blob([m.buf]),'workline '+m.date);
   } else if(m.type==='wl-error'){
-    if(PA_LOADERS[m.kind]) kindStatus(m.kind,'❌ '+String(m.msg||'')+' — 파일로 올려주세요');
+    if(PA_LOADERS[m.kind]) kindStatus(m.kind,'❌ '+String(m.msg||'')+(m.login?' — workline.kr에 로그인한 뒤 다시 눌러주세요':' — 파일로 올려주세요'));
+    else if(m.msg) wlStatus('❌ '+String(m.msg));
+    if(m.login) wlStatus('🔐 workline 로그인이 필요해요 — [🔗 workline 열기]로 로그인한 뒤 [⚡ 바로 가져오기]를 다시 눌러주세요');
   } else if(m.type==='wl-done'){
+    if(m.login){
+      ['wired','tvrenew','gift','img'].forEach(function(k){ var st=document.getElementById('pa-'+k+'-status'); if(st&&/대기 중|요청 중/.test(st.textContent)) st.textContent=''; });
+      wlStatus('🔐 workline 로그인이 풀려 있어요 — [🔗 workline 열기]로 로그인한 뒤 [⚡ 바로 가져오기]를 다시 눌러주세요');
+      return;
+    }
     wlStatus((m.ok===m.total?'✅ ':'⚠️ ')+m.date+' 가져오기 '+m.ok+'/'+m.total+'건 완료 — 전화(CTI)는 파일로 올려주세요');
   }
 });
