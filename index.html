@@ -823,6 +823,15 @@ table.pt td.otc{background:#FFF8F8;}
       </div>
     </div>
     <!-- 로그 (대표관리자 전용) -->
+    <!-- VOC민원분석 (전 직원) - 별도 사이트(wooriwoosin.github.io/voc)를 그대로 띄움: 그쪽을 업데이트하면 여기도 자동 반영 -->
+    <div class="pg" id="pg-voc">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <div class="cttl" style="margin-bottom:0">🗣️ VOC민원분석</div>
+        <button type="button" class="btn btn-se btn-sm" id="voc-reload-btn" style="margin-left:auto">🔄 새로고침</button>
+        <a class="btn btn-se btn-sm" id="voc-newwin" href="https://wooriwoosin.github.io/voc/" target="_blank" rel="noopener" style="text-decoration:none">↗ 새 창으로 열기</a>
+      </div>
+      <iframe id="voc-frame" title="VOC민원분석" style="width:100%;height:calc(100vh - 170px);min-height:600px;border:1px solid var(--b);border-radius:10px;background:#fff"></iframe>
+    </div>
     <div class="pg" id="pg-logs">
       <div class="dbar" style="margin-bottom:14px;flex-wrap:wrap;gap:6px">
         <button class="btn btn-se btn-sm log-quick" data-range="today">오늘</button>
@@ -1983,6 +1992,7 @@ function showApp(){
       {id:'notice',l:'📢 공지사항',p:'pg-notice'},
       {id:'allperf',l:'📊 전체실적',p:'pg-allperf'},
       {id:'perfreport',l:'📑 실적리포트',p:'pg-perfreport'},
+      {id:'voc',l:'🗣️ VOC민원분석',p:'pg-voc'},
       {id:'perfagg',l:'📈 실적집계',p:'pg-input'},
       {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
       {id:'emps',l:'👥 직원 관리',p:'pg-emps'},
@@ -1998,7 +2008,7 @@ function showApp(){
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'notice';
-      var validTabs=['notice','allperf','perfreport','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
+      var validTabs=['notice','allperf','perfreport','voc','perfagg','cal','emps','accounts','myinfo','seats','ip','settings'];
       if(CU.teamCardAdmin) validTabs.push('teamcard');
       if(CU.superAdmin) validTabs.push('logs');
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'notice');
@@ -2009,6 +2019,7 @@ function showApp(){
       {id:'notice',l:'📢 공지사항',p:'pg-notice'},
       {id:'allperf',l:'📊 전체실적',p:'pg-allperf'},
       {id:'perfreport',l:'📑 실적리포트',p:'pg-perfreport'},
+      {id:'voc',l:'🗣️ VOC민원분석',p:'pg-voc'},
       {id:'cal',l:'📅 연차&휴일근무',p:'pg-cal'},
       {id:'seats',l:'🗺️ 자리배치도&내선번호',p:'pg-seats'},
       {id:'myinfo',l:'👤 내 정보',p:'pg-myinfo'},
@@ -2018,7 +2029,7 @@ function showApp(){
     loadGlobalSettings(function(){
       refreshEmpNameMap();
       var lastTab=sessionStorage.getItem('lastTab')||'notice';
-      var validTabs=['notice','allperf','perfreport','cal','seats','myinfo','ip'];
+      var validTabs=['notice','allperf','perfreport','voc','cal','seats','myinfo','ip'];
       switchTab(validTabs.indexOf(lastTab)!==-1?lastTab:'notice');
     });
   }
@@ -2038,6 +2049,14 @@ function renderTabs(tabs){
     nav.appendChild(btn);
   });
 }
+
+// VOC민원분석: 처음 열 때(또는 새로고침 버튼) 최신본을 불러옴 (주소 뒤 ?v=시각 으로 예전 캐시 대신 새 버전)
+var VOC_URL='https://wooriwoosin.github.io/voc/';
+function loadVoc(force){
+  var f=document.getElementById('voc-frame'); if(!f) return;
+  if(force||!f.getAttribute('src')) f.setAttribute('src',VOC_URL+'?v='+Date.now());
+}
+document.getElementById('voc-reload-btn') && document.getElementById('voc-reload-btn').addEventListener('click',function(){ loadVoc(true); });
 
 var _perfDirty=false; // 실적 입력 중 여부
 
@@ -2064,6 +2083,7 @@ function switchTab(id){
   if(id==='cal'){initCal();loadCal();loadCalNotice();updateCalHint();}
   if(id==='allperf') loadAllPerfNew();
   if(id==='perfagg') loadPerfAgg();
+  if(id==='voc') loadVoc(false);
   if(id==='emps'){
     var now=Date.now();
     if(!_loadedTabs.emps||now-_loadedTabs.emps>30000){ _loadedTabs.emps=now; loadEmps(); }
