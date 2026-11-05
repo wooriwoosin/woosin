@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "우신 인트라넷 - workline 가져오기",
+  "version": "1.0.0",
+  "description": "우신 인트라넷 실적집계에서 [⚡ 바로 가져오기] 버튼 하나로 workline 로우데이터를 가져옵니다.",
+  "host_permissions": ["https://workline.kr/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://wooriwoosin.github.io/woosin/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ]
+}
