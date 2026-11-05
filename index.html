@@ -808,7 +808,14 @@ table.pt td.otc{background:#FFF8F8;}
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="cttl" style="margin-bottom:0;font-size:14px">사용내역</div>
-          <button class="btn btn-pr btn-sm" id="tc-usage-add-btn">+ 내역 추가</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-pr btn-sm" id="tc-import-btn">📥 카드사 엑셀 불러오기</button>
+            <button class="btn btn-se btn-sm" id="tc-usage-add-btn">+ 내역 추가</button>
+            <input type="file" id="tc-import-file" accept=".xls,.xlsx" multiple style="display:none">
+          </div>
+        </div>
+        <div id="tc-drop" style="border:1.5px dashed var(--bs);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--tm);text-align:center">
+          우리카드 <b>이용내역(승인 상세내역) 엑셀</b>을 여기로 끌어다 놓거나 [📥 카드사 엑셀 불러오기] — 우신·웨이브넷 파일을 <b>한 번에 여러 개</b> 넣어도 돼요. 등록된 팀카드(뒤 4자리) 내역만 가져와요.
         </div>
         <div style="overflow-x:auto">
           <table class="pt" id="tc-usage-table"></table>
@@ -937,6 +944,14 @@ table.pt td.otc{background:#FFF8F8;}
     <div class="fg"><label>카드번호 뒷자리</label><input type="text" id="tcc-last4" maxlength="4" placeholder="예: 1234"></div>
     <div class="fg"><label>비고</label><input type="text" id="tcc-note"></div>
     <div class="mact"><button class="btn btn-se" id="tcc-cancel">취소</button><button class="btn btn-pr" style="width:auto" id="tcc-save">저장</button></div>
+  </div>
+</div>
+<div class="mbg" id="m-tc-import">
+  <div class="modal" style="max-width:980px;width:96vw">
+    <div class="mttl">카드사 이용내역 불러오기 — 미리보기</div>
+    <div id="tci-summary" style="font-size:12.5px;color:var(--ts);line-height:1.7;margin-bottom:8px"></div>
+    <div style="max-height:56vh;overflow:auto;border:1px solid var(--b);border-radius:8px"><table class="pt" id="tci-table"></table></div>
+    <div class="mact"><button class="btn btn-se" id="tci-cancel">닫기</button><button class="btn btn-pr" style="width:auto" id="tci-save">저장</button></div>
   </div>
 </div>
 <div class="mbg" id="m-tc-usage">
@@ -1188,6 +1203,7 @@ var CACHE_INVALIDATE={
   updateTeamCard:['getTeamCards'],
   deleteTeamCard:['getTeamCards','getTeamCardUsage'],
   addTeamCardUsage:['getTeamCardUsage'],
+  importTeamCardUsage:['getTeamCardUsage'],
   updateTeamCardUsage:['getTeamCardUsage'],
   deleteTeamCardUsage:['getTeamCardUsage'],
   saveTeamCardBudget:['getTeamCardBudget']
@@ -1653,6 +1669,18 @@ async function supaDispatch(action, data){
         var tr=data.row||{}; var tid='tcu_'+Date.now()+'_'+Math.floor(Math.random()*1000);
         _chk(await sb.from('팀카드사용내역').insert({ id:tid, yearMonth:tr.yearMonth||'', date:tr.date||'', cardId:tr.cardId||'', empId:tr.empId||'', empName:tr.empName||'', desc:tr.desc||'', amount:tr.amount||0, note:tr.note||'' }));
         return { ok:true, id:tid };
+      }
+      case 'importTeamCardUsage': {
+        // 카드사 엑셀 불러오기: 승인번호 기반 id로 일괄 등록(이미 있으면 건너뜀) + 승인취소 건 삭제
+        var dels=(data.deleteIds||[]).filter(function(x){ return /^wc_/.test(x); });
+        if(dels.length) _chk(await sb.from('팀카드사용내역').delete().in('id',dels));
+        var irows=(data.rows||[]).map(function(r){ return { id:r.id, yearMonth:String(r.date).slice(0,7), date:r.date, cardId:r.cardId, empId:'', empName:'', desc:r.desc||'', amount:Number(r.amount)||0, note:r.note||'' }; });
+        if(irows.length){
+          var have={}; (_chk(await sb.from('팀카드사용내역').select('id').in('id',irows.map(function(r){ return r.id; })))||[]).forEach(function(e){ have[e.id]=1; });
+          irows=irows.filter(function(r){ return !have[r.id]; });
+          if(irows.length) _chk(await sb.from('팀카드사용내역').insert(irows));
+        }
+        return { ok:true, inserted:irows.length, deleted:dels.length };
       }
       case 'updateTeamCardUsage': { _chk(await sb.from('팀카드사용내역').update(data.fields||{}).eq('id',data.id)); return { ok:true }; }
       case 'deleteTeamCardUsage': { _chk(await sb.from('팀카드사용내역').delete().eq('id',data.id)); return { ok:true }; }
@@ -5712,6 +5740,152 @@ document.getElementById('tcc-save') && document.getElementById('tcc-save').addEv
   var card={name:name,issuer:document.getElementById('tcc-issuer').value.trim(),last4:document.getElementById('tcc-last4').value.trim(),note:document.getElementById('tcc-note').value.trim()};
   api('addTeamCard',{card:card}).then(function(res){
     if(res.ok){ addLog('팀카드 등록: '+name); closeM('m-tc-card'); loadTeamCard(); } else alert(res.error||'등록 실패');
+  });
+});
+// ── 카드사(우리카드) 이용내역 엑셀 불러오기 ──
+// 우리카드 '승인 상세내역' 엑셀(.xls)을 읽어, 등록된 팀카드(뒤 4자리)의 내역만 골라 미리보기 후 저장한다.
+// 승인번호로 중복을 막고(id='wc_'+뒤4자리+'_'+승인번호), 승인취소 건은 가져오지 않거나 기존 내역을 지운다.
+var TCI_PARSED=[]; // [{company, rows:[{date,time,approvalNo,last4,merchant,amount,status,cancel}]}]
+var TCI_ITEMS=[];  // 미리보기 항목
+function tciParseFile(file){
+  return new Promise(function(resolve){
+    var fr=new FileReader();
+    fr.onload=function(ev){
+      try{
+        var wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+        var arr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false});
+        var company='', y1=null, m1=null, y2=null, col=null, rows=[];
+        arr.forEach(function(r){
+          var cells=r.map(function(c){ return String(c==null?'':c).trim(); });
+          var joined=cells.join(' ');
+          if(!company){ var cm=cells.find(function(c){ return /주식회사|㈜|\(주\)/.test(c); }); if(cm) company=cm.replace(/\s+/g,' '); }
+          var pm=joined.match(/(\d{4})[.\-](\d{2})[.\-]\d{2}\s*~\s*(\d{4})[.\-]\d{2}[.\-]\d{2}/);
+          if(pm&&y1==null){ y1=+pm[1]; m1=+pm[2]; y2=+pm[3]; }
+          var hi=cells.indexOf('이용일자');
+          if(hi!==-1&&cells.some(function(c){ return c.indexOf('승인번호')!==-1; })){ // 머리줄(페이지마다 반복됨)
+            col={}; cells.forEach(function(c,i){
+              if(c==='이용일자') col.dt=i; else if(c.indexOf('승인번호')!==-1) col.no=i; else if(c.indexOf('이용카드')!==-1) col.card=i;
+              else if(c.indexOf('가맹점')!==-1) col.mer=i; else if(c.indexOf('승인금액')!==-1&&c.indexOf('원')!==-1) col.amt=i;
+              else if(c.indexOf('접수')!==-1||c.indexOf('취소')!==-1) col.st=i; else if(c.indexOf('매출구분')!==-1) col.kind=i; });
+            return;
+          }
+          if(!col) return;
+          var dm=String(cells[col.dt]||'').match(/^(\d{1,2})\.(\d{1,2})\s+(\d{1,2}:\d{2})/);
+          if(!dm) return;
+          var mon=+dm[1], day=+dm[2], yr=(y1==null)?new Date().getFullYear():(y1===y2||mon>=m1?y1:y2);
+          var amtRaw=String(cells[col.amt]||'0').replace(/[,원\s]/g,''), amt=Number(amtRaw)||0;
+          var st=String(cells[col.st]||'');
+          var last4=String(cells[col.card]||'').replace(/\D/g,'').slice(-4);
+          rows.push({date:yr+'-'+String(mon).padStart(2,'0')+'-'+String(day).padStart(2,'0'), time:dm[3],
+            approvalNo:String(cells[col.no]||'').replace(/\s/g,''), last4:last4, merchant:String(cells[col.mer]||'').replace(/\s+/g,' '),
+            amount:Math.abs(amt), status:st, kind:String(cells[col.kind]||''), cancel:(/취소/.test(st)||amt<0)});
+        });
+        if(!col) return resolve({file:file.name,error:'우리카드 "승인 상세내역" 형식이 아니에요 (이용일자·승인번호 머리줄 없음)'});
+        resolve({file:file.name,company:company,rows:rows});
+      }catch(e){ resolve({file:file.name,error:'파일을 읽을 수 없어요: '+e.message}); }
+    };
+    fr.readAsArrayBuffer(file);
+  });
+}
+function tciHandleFiles(files){
+  files=Array.prototype.slice.call(files||[]); if(!files.length) return;
+  Promise.all(files.map(tciParseFile)).then(function(parsed){ TCI_PARSED=parsed; tciBuildPreview(); });
+}
+function tciBuildPreview(){
+  var cardByLast4={}; TC_CARDS.forEach(function(c){ var l=String(c.last4||'').replace(/\D/g,'').slice(-4); if(l) cardByLast4[l]=c; });
+  var all=[], errs=[], others={};
+  TCI_PARSED.forEach(function(f){
+    if(f.error){ errs.push(f.file+': '+f.error); return; }
+    f.rows.forEach(function(r){ r.company=f.company; if(cardByLast4[r.last4]) all.push(r); else { var k=r.last4; (others[k]=others[k]||{n:0,company:f.company}).n++; } });
+  });
+  // 승인번호별로 묶어 취소 처리 (원거래+취소가 같이 있으면 둘 다 제외)
+  var byId={};
+  all.forEach(function(r){ var id='wc_'+r.last4+'_'+r.approvalNo; (byId[id]=byId[id]||[]).push(r); });
+  var months={}; Object.keys(byId).forEach(function(id){ months[byId[id][0].date.slice(0,7)]=1; });
+  Promise.all(Object.keys(months).map(function(ym){ return api('getTeamCardUsage',{yearMonth:ym}); })).then(function(rs){
+    var existing={}, manual=[];
+    rs.forEach(function(res){ (res.ok?res.rows:[]).forEach(function(u){ existing[u.id]=u; if(String(u.id).indexOf('wc_')!==0) manual.push(u); }); });
+    TCI_ITEMS=Object.keys(byId).map(function(id){
+      var g=byId[id], base=g.find(function(r){ return !r.cancel; })||g[0], card=cardByLast4[base.last4];
+      var cancelled=g.some(function(r){ return r.cancel; });
+      var it={id:id,date:base.date,time:base.time,card:card,last4:base.last4,merchant:base.merchant,amount:base.amount,approvalNo:base.approvalNo,desc:base.merchant};
+      if(cancelled){ it.state=existing[id]?'cancel-del':'cancel-skip'; it.checked=!!existing[id]; }
+      else if(existing[id]){ it.state='dup'; it.checked=false; }
+      else {
+        var sus=manual.find(function(u){ return u.cardId===card.id&&u.date===base.date&&Number(u.amount)===base.amount; });
+        if(sus){ it.state='suspect'; it.suspectDesc=sus.desc; it.checked=false; } else { it.state='new'; it.checked=true; }
+      }
+      return it;
+    }).sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
+    tciRender(errs,others);
+    openM('m-tc-import');
+  });
+}
+function tciRender(errs,others){
+  var cnt={new:0,dup:0,suspect:0,cdel:0,cskip:0};
+  TCI_ITEMS.forEach(function(it){ if(it.state==='new')cnt.new++; else if(it.state==='dup')cnt.dup++; else if(it.state==='suspect')cnt.suspect++; else if(it.state==='cancel-del')cnt.cdel++; else cnt.cskip++; });
+  var files=TCI_PARSED.filter(function(f){ return !f.error; }).map(function(f){ return ntEsc(f.company||f.file)+' '+f.rows.length+'건'; }).join(' · ');
+  var oth=Object.keys(others).sort();
+  var html='<b>읽은 파일:</b> '+(files||'-')+'<br>'+
+    '<b>팀카드 내역:</b> 새로 등록 <b style="color:var(--ac)">'+cnt.new+'</b>건'+(cnt.dup?' · 이미 등록됨 '+cnt.dup+'건(제외)':'')+(cnt.suspect?' · <span style="color:var(--wn)">수기 등록과 겹침 의심 '+cnt.suspect+'건(체크 해제됨)</span>':'')+
+    (cnt.cdel?' · <span style="color:var(--dg)">승인취소 → 기존 내역 삭제 '+cnt.cdel+'건</span>':'')+(cnt.cskip?' · 승인취소 '+cnt.cskip+'건(제외)':'');
+  if(oth.length) html+='<details style="margin-top:2px"><summary style="cursor:pointer;color:var(--tm)">팀카드가 아닌 카드 '+oth.length+'장 내역은 제외했어요 (팀카드로 추가하려면 펼치기)</summary>'+
+    oth.map(function(l){ return '<span style="white-space:nowrap;color:var(--tm)">'+ntEsc(others[l].company||'')+' ****'+l+'('+others[l].n+'건) <a href="#" class="tci-reg" data-l4="'+l+'" data-co="'+ntEsc(others[l].company||'')+'">+팀카드 등록</a></span>'; }).join(' · ')+'</details>';
+  if(errs.length) html+='<br><span style="color:var(--dg)">'+errs.map(ntEsc).join('<br>')+'</span>';
+  if(!TCI_ITEMS.length&&!errs.length) html+='<br><span style="color:var(--wn)">⚠️ 등록된 팀카드의 내역이 없어요. [+ 카드 등록]에서 카드 뒤 4자리를 입력했는지 확인해 주세요.</span>';
+  document.getElementById('tci-summary').innerHTML=html;
+  var stLabel={'new':'<span style="color:var(--ac)">새로 등록</span>','dup':'<span style="color:var(--tm)">이미 등록됨</span>','suspect':'<span style="color:var(--wn)">겹침 의심</span>','cancel-del':'<span style="color:var(--dg)">승인취소 → 삭제</span>','cancel-skip':'<span style="color:var(--tm)">승인취소</span>'};
+  var head='<tr><th><input type="checkbox" id="tci-all"></th><th>날짜</th><th>카드</th><th>내역 (수정 가능)</th><th>금액</th><th>상태</th></tr>';
+  var body=TCI_ITEMS.map(function(it,i){
+    var canPick=(it.state==='new'||it.state==='suspect'||it.state==='cancel-del');
+    return '<tr style="'+(canPick?'':'color:var(--tm)')+'"><td><input type="checkbox" class="tci-ck" data-i="'+i+'"'+(it.checked?' checked':'')+(canPick?'':' disabled')+'></td>'+
+      '<td style="white-space:nowrap">'+it.date.slice(5)+' '+it.time+'</td><td style="white-space:nowrap">'+ntEsc(it.card?it.card.name:'****'+it.last4)+'</td>'+
+      '<td>'+(it.state==='new'||it.state==='suspect'?'<input type="text" class="tci-desc" data-i="'+i+'" value="'+ntEsc(it.desc)+'" style="width:100%;min-width:180px;padding:3px 6px;border:1.5px solid var(--b);border-radius:5px;font-size:12px">':ntEsc(it.merchant))+
+        (it.state==='suspect'?'<div style="font-size:11px;color:var(--wn)">수기 등록: '+ntEsc(it.suspectDesc||'')+'</div>':'')+'</td>'+
+      '<td style="text-align:right;white-space:nowrap">'+it.amount.toLocaleString()+'</td><td style="white-space:nowrap">'+stLabel[it.state]+'</td></tr>';
+  }).join('');
+  var tbl=document.getElementById('tci-table');
+  tbl.innerHTML=head+(body||'<tr><td colspan="6" style="text-align:center;color:var(--tm);padding:16px">가져올 팀카드 내역이 없습니다.</td></tr>');
+  function refreshSave(){ var n=TCI_ITEMS.filter(function(it){ return it.checked; }).length; var b=document.getElementById('tci-save'); b.textContent=n?('선택한 '+n+'건 저장'):'저장'; b.disabled=!n; }
+  tbl.querySelectorAll('.tci-ck').forEach(function(ck){ ck.addEventListener('change',function(){ TCI_ITEMS[+ck.dataset.i].checked=ck.checked; refreshSave(); }); });
+  tbl.querySelectorAll('.tci-desc').forEach(function(inp){ inp.addEventListener('input',function(){ TCI_ITEMS[+inp.dataset.i].desc=inp.value; }); });
+  var all=document.getElementById('tci-all'); if(all) all.addEventListener('change',function(){ TCI_ITEMS.forEach(function(it,i){ var ck=tbl.querySelector('.tci-ck[data-i="'+i+'"]'); if(ck&&!ck.disabled){ it.checked=all.checked; ck.checked=all.checked; } }); refreshSave(); });
+  document.querySelectorAll('#tci-summary .tci-reg').forEach(function(a){
+    a.addEventListener('click',function(e){ e.preventDefault();
+      var name=prompt('팀카드 이름을 입력해 주세요 (예: 우신카드 김해성)', (a.dataset.co||'')+' ****'+a.dataset.l4); if(!name) return;
+      api('addTeamCard',{card:{name:name.trim(),issuer:'우리카드',last4:a.dataset.l4,note:''}}).then(function(res){
+        if(!res.ok){ alert(res.error||'등록 실패'); return; }
+        addLog('팀카드 등록: '+name.trim());
+        api('getTeamCards',{}).then(function(r){ if(r.ok) TC_CARDS=r.cards.filter(function(c){return c.active!=='N';}); renderTcCards(); tciBuildPreview(); });
+      });
+    });
+  });
+  refreshSave();
+}
+document.getElementById('tc-import-btn') && document.getElementById('tc-import-btn').addEventListener('click',function(){ var f=document.getElementById('tc-import-file'); f.value=''; f.click(); });
+document.getElementById('tc-import-file') && document.getElementById('tc-import-file').addEventListener('change',function(e){ tciHandleFiles(e.target.files); });
+(function(){ var dz=document.getElementById('tc-drop'); if(!dz) return;
+  dz.addEventListener('dragover',function(e){ e.preventDefault(); dz.style.borderColor='var(--ac)'; dz.style.background='var(--al)'; });
+  dz.addEventListener('dragleave',function(){ dz.style.borderColor=''; dz.style.background=''; });
+  dz.addEventListener('drop',function(e){ e.preventDefault(); dz.style.borderColor=''; dz.style.background=''; tciHandleFiles(e.dataTransfer.files); });
+})();
+document.getElementById('tci-cancel') && document.getElementById('tci-cancel').addEventListener('click',function(){ closeM('m-tc-import'); });
+document.getElementById('tci-save') && document.getElementById('tci-save').addEventListener('click',function(){
+  var pick=TCI_ITEMS.filter(function(it){ return it.checked; });
+  var rows=pick.filter(function(it){ return it.state==='new'||it.state==='suspect'; }).map(function(it){
+    return {id:it.id,date:it.date,cardId:it.card.id,desc:String(it.desc||it.merchant).trim(),amount:it.amount,note:it.time+' 승인'};
+  });
+  var dels=pick.filter(function(it){ return it.state==='cancel-del'; }).map(function(it){ return it.id; });
+  if(!rows.length&&!dels.length) return;
+  var btn=document.getElementById('tci-save'); btn.disabled=true; btn.textContent='저장 중...';
+  api('importTeamCardUsage',{rows:rows,deleteIds:dels}).then(function(res){
+    btn.disabled=false;
+    if(!res.ok){ alert(res.error||'저장 실패'); btn.textContent='저장'; return; }
+    addLog('팀카드 이용내역 엑셀 불러오기: 등록 '+res.inserted+'건'+(res.deleted?' / 취소삭제 '+res.deleted+'건':''));
+    closeM('m-tc-import');
+    var ms={}; rows.forEach(function(r){ ms[r.date.slice(0,7)]=1; });
+    alert('✅ '+res.inserted+'건 등록'+(res.deleted?', 승인취소 '+res.deleted+'건 삭제':'')+' 했어요.'+(Object.keys(ms).length>1?'\n('+Object.keys(ms).sort().join(', ')+' 월에 나눠 들어갔어요)':''));
+    loadTeamCard();
   });
 });
 function openTcUsageModal(id){
