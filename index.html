@@ -5964,7 +5964,7 @@ var PR_CATS=['유선신규','약정갱신','유선기타','기가아이즈','무
 //  · 약정갱신은 인업셀/인약갱/티약갱/티업셀 파트별 1건씩이라 "약갱·업셀 각각 0.3"
 //  · 인증-일반 0.3, 인증-약갱 0.7
 //  · VOC는 고정업무(시간)로 반영되므로 건수 점수 없음
-//  · 무선 개통 시 부수적으로 생기는 발신콜은 무선건수만큼 빼서 0점 (prPhoneWork)
+//  · 무선 개통·인증(일반/약갱) 시 부수적으로 생기는 발신콜(사전인증 전화)은 그 건수만큼 빼서 0점 (prPhoneWork)
 var PR_WEIGHTS={유선신규:0.4,약정갱신:0.3,유선기타:0.5,기가아이즈:1,무선:0.5,상품권:0.3,인증_일반:0.3,인증_약갱:0.7,간편작성:0.3};
 var PR_CALL_WEIGHTS={발신콜:0.3,수신콜:0.5,땡김콜:0.8};
 function prWeightLegend(){
@@ -6040,10 +6040,11 @@ function prFetchAndRender(){
 }
 // 접수·처리업무 환산점수 (건수×가중치, PR_WEIGHTS)
 function prAcceptWork(s){ return Object.keys(PR_WEIGHTS).reduce(function(sum,k){return sum+(Number(s[k])||0)*PR_WEIGHTS[k];},0); }
-// 전화업무 환산점수(발신/수신/땡김) - 단, 무선개통시 ARS인증 등으로 부수적으로 발생하는 발신콜은
-// 무선 개통건수만큼 빼줘서 중복 인정되지 않게 함
+// 전화업무 환산점수(발신/수신/땡김) - 단, 무선 개통·인증(일반/약갱) 때 사전인증 등으로 부수적으로
+// 발생하는 발신콜은 그 건수만큼 빼줘서 중복 인정되지 않게 함 (인증 건은 이미 인증 점수로 받음)
+function prAuthCount(s){ return (s.인증!=null&&Number(s.인증)>0)?Number(s.인증):(Number(s.인증_일반)||0)+(Number(s.인증_약갱)||0); }
 function prPhoneWork(s){
-  var adjOutbound=Math.max(0,(s.발신콜||0)-(s.무선||0));
+  var adjOutbound=Math.max(0,(s.발신콜||0)-(s.무선||0)-prAuthCount(s));
   return adjOutbound*PR_CALL_WEIGHTS.발신콜+(s.수신콜||0)*PR_CALL_WEIGHTS.수신콜+(s.땡김콜||0)*PR_CALL_WEIGHTS.땡김콜;
 }
 function prTotal(s){ return prAcceptWork(s)+prPhoneWork(s); }
@@ -6094,7 +6095,7 @@ function prRenderTable(sums){
     '<td>'+grand.fixdurHours.toFixed(1)+'</td><td>'+grand.availableHours.toFixed(1)+'</td>'+
     '<td style="color:var(--ac)">'+(grandRate!==null?grandRate.toFixed(2):'-')+'</td><td></td></tr>';
   tbl.innerHTML=head+(body||'<tr><td colspan="19" style="color:var(--tm);padding:16px;text-align:center">해당 기간 데이터가 없습니다.</td></tr>')+footRow+
-    '<tr><td colspan="19" style="font-size:11px;color:var(--tm);text-align:left;padding:8px 6px;border:none">환산 가중치(건당 점수): '+prWeightLegend()+' · 무선 개통 시 ARS 등 부수 발신콜은 무선건수만큼 빼고 0점</td></tr>';
+    '<tr><td colspan="19" style="font-size:11px;color:var(--tm);text-align:left;padding:8px 6px;border:none">환산 가중치(건당 점수): '+prWeightLegend()+' · 무선 개통·인증(일반/약갱) 때 생기는 사전인증 발신콜은 무선+인증 건수만큼 빼고 0점</td></tr>';
 }
 // 인증 칸: 일반 건수 + (약갱 건수)
 function prAuthCell(s){ var g=s.인증_일반||0, y=s.인증_약갱||0; return g+(y?'<span style="font-size:10.5px;color:var(--tm)"> ('+y+')</span>':''); }
