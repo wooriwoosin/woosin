@@ -1116,8 +1116,10 @@ var SKILL_CATALOG=[
   {cat:'유선 심화접수',items:['(번호이동) 일반전화, 인터넷전화','센트릭스','기가아이즈','약정갱신']},
   {cat:'무선관련',items:['유심개통','SO처리 (개통,선약,결합 등)']},
   {cat:'기본SO처리',items:['취소처리','청구매체/자동이체 변경','일정변경','결합변경']},
-  {cat:'그외',items:['인입전화응대 (고객,거래처,기사님,설치점,고객센터,그외 등등)','OSS확인','웹회신,카톡,웍스,채널 응대','SRTT(VOC)처리','이미징처리','신입교육','정책관련 업무','정산관련 업무','개통확인','검수(일일검수,모바일,패밀리 등 검수)']}
+  {cat:'그외',items:['인입전화응대 (고객,거래처,기사님,설치점,고객센터,그외 등등)','OSS확인','웹회신,카톡,웍스,채널 응대','SRTT(VOC)처리','이미징처리','신입교육','정책관련 업무','정산관련 업무','개통확인','검수(일일검수,모바일,패밀리 등 검수)','미등록주소등록요청','인터넷 회선증설요청','인터넷전화 할부회선 증설요청','나이스 사업자실명등록요청','예치보증금 당일 반환요청']}
 ];
+// 저장된 스킬 목록에 나중에 추가된 항목 (관리자 로그인 시 한 번만 반영, 이후 설정에서 지워도 다시 안 생김)
+var SKILL_ADDITIONS=[{flag:'skillAdd_20261119',cat:'그외',items:['미등록주소등록요청','인터넷 회선증설요청','인터넷전화 할부회선 증설요청','나이스 사업자실명등록요청','예치보증금 당일 반환요청']}];
 function skillKey(cat,item){ return cat+'::'+item; }
 // 실적집계(perfagg) 고정업무 목록 - 설정에 영구저장, 기본값은 빈 배열(관리자가 직접 추가)
 var PA_FIXDUR=[];
@@ -1368,6 +1370,15 @@ function loadGlobalSettings(cb){
       if(s.ETC_ITEMS&&s.ETC_ITEMS.length){ETC.length=0;ETC.push.apply(ETC,s.ETC_ITEMS);}
       if(s.TEAMS_FLAT&&s.TEAMS_FLAT.length){TEAMS_FLAT.length=0;TEAMS_FLAT.push.apply(TEAMS_FLAT,s.TEAMS_FLAT);}
       if(s.skillCatalog&&s.skillCatalog.length){SKILL_CATALOG.length=0;SKILL_CATALOG.push.apply(SKILL_CATALOG,s.skillCatalog);}
+      // 새로 추가된 스킬 항목을 저장된 목록에 한 번만 반영 (관리자만 저장)
+      SKILL_ADDITIONS.forEach(function(ad){
+        if(s[ad.flag]||!CU||CU.role!=='admin') return;
+        var catObj=SKILL_CATALOG.find(function(c){ return c.cat===ad.cat; });
+        if(!catObj){ catObj={cat:ad.cat,items:[]}; SKILL_CATALOG.push(catObj); }
+        ad.items.forEach(function(it){ if(catObj.items.indexOf(it)===-1) catObj.items.push(it); });
+        var save={skillCatalog:SKILL_CATALOG.map(function(c){ return {cat:c.cat,items:c.items.slice()}; })}; save[ad.flag]='1';
+        api('saveSettings',save);
+      });
       if(s.perfaggFixdur&&s.perfaggFixdur.length){PA_FIXDUR.length=0;PA_FIXDUR.push.apply(PA_FIXDUR,s.perfaggFixdur);}
     }
     if(cb) cb();
