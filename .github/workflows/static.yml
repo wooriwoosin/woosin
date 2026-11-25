@@ -12,6 +12,7 @@ on:
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
+  actions: read   # deploy-pages가 업로드된 artifact 정보를 조회할 때 필요
   pages: write
   id-token: write
 
